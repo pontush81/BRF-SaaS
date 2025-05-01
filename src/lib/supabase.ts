@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Create a Supabase client for use in the browser
@@ -41,35 +41,67 @@ const isPlaceholder = (value?: string) => {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Skapa mockad klient om miljövariabler saknas
-let supabase: ReturnType<typeof createClient>;
+// Skapa en mer komplett mockad Supabase-klient
+const createMockClient = (): SupabaseClient => {
+  return {
+    // Nödvändiga grundfunktioner
+    supabaseUrl: 'https://mock-instance.supabase.co',
+    supabaseKey: 'mock-key',
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: () => Promise.resolve({ data: null, error: null }),
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          then: () => Promise.resolve([]),
+        }),
+        filter: () => ({
+          then: () => Promise.resolve([]),
+        }),
+        then: () => Promise.resolve([]),
+      }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+      update: () => Promise.resolve({ data: null, error: null }),
+      upsert: () => Promise.resolve({ data: null, error: null }),
+      delete: () => Promise.resolve({ data: null, error: null }),
+    }),
+    // Auth-relaterade funktioner
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      signUp: () => Promise.resolve({ data: null, error: null }),
+      signInWithPassword: () => Promise.resolve({ data: null, error: null }),
+      signOut: () => Promise.resolve({ error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    },
+    // Realtidsfunktioner
+    realtime: {
+      channel: () => ({
+        on: () => ({ subscribe: () => {} }),
+        subscribe: () => Promise.resolve(),
+      }),
+    },
+    // Övriga nödvändiga funktioner
+    storage: { from: () => ({}) },
+    functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
+    rest: {},
+    channel: () => ({ subscribe: () => ({ receive: () => ({}) }) }),
+    // Skapa tomimplementationer för de återstående funktionerna med unknown
+  } as unknown as SupabaseClient;
+};
+
+let supabase: SupabaseClient;
 
 if (!isPlaceholder(supabaseUrl) && !isPlaceholder(supabaseAnonKey)) {
   try {
     supabase = createClient(supabaseUrl, supabaseAnonKey);
   } catch (error) {
     console.error('Supabase initialization error:', error);
-    // Skapa mockad klient om initieringen misslyckas
-    supabase = {
-      auth: {
-        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
-        signUp: () => Promise.resolve({ data: null, error: null }),
-        signInWithPassword: () => Promise.resolve({ data: null, error: null }),
-        signOut: () => Promise.resolve({ error: null }),
-      },
-    } as ReturnType<typeof createClient>;
+    // Använd den mockade klienten om initieringen misslyckas
+    supabase = createMockClient();
   }
 } else {
   console.warn('Supabase is not properly configured, using mock client');
-  // Skapa mockad klient om miljövariabler saknas
-  supabase = {
-    auth: {
-      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
-      signUp: () => Promise.resolve({ data: null, error: null }),
-      signInWithPassword: () => Promise.resolve({ data: null, error: null }),
-      signOut: () => Promise.resolve({ error: null }),
-    },
-  } as ReturnType<typeof createClient>;
+  // Använd den mockade klienten om miljövariabler saknas
+  supabase = createMockClient();
 }
 
 export { supabase }; 
