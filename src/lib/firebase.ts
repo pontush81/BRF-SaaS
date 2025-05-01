@@ -1,7 +1,7 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // Kontrollera om vi är i en webbläsarmiljö
 const isBrowser = typeof window !== 'undefined';
@@ -28,10 +28,16 @@ const isConfigValid = !isPlaceholder(firebaseConfig.apiKey) &&
                      !isPlaceholder(firebaseConfig.projectId);
 
 // Skapa mockad export om konfigurationen inte är valid eller om vi är i en serverrendering
-let app;
-let auth;
-let db;
-let storage;
+let app: FirebaseApp | null = null;
+let auth: Auth;
+let db: Firestore;
+let storage: FirebaseStorage;
+
+// Definiera typ för mockad auth
+interface MockAuth extends Auth {
+  currentUser: null;
+  onAuthStateChanged: () => () => void;
+}
 
 if (isConfigValid) {
   try {
@@ -44,17 +50,17 @@ if (isConfigValid) {
     console.error('Firebase initialization error:', error);
     // Skapa mockade objekt
     app = null;
-    auth = { currentUser: null, onAuthStateChanged: () => () => {} } as any;
-    db = {} as any;
-    storage = {} as any;
+    auth = { currentUser: null, onAuthStateChanged: () => () => {} } as MockAuth;
+    db = {} as Firestore;
+    storage = {} as FirebaseStorage;
   }
 } else {
   console.warn('Firebase configuration is invalid or missing environment variables');
   // Skapa mockade objekt för utveckling/byggfas
   app = null;
-  auth = { currentUser: null, onAuthStateChanged: () => () => {} } as any;
-  db = {} as any;
-  storage = {} as any;
+  auth = { currentUser: null, onAuthStateChanged: () => () => {} } as MockAuth;
+  db = {} as Firestore;
+  storage = {} as FirebaseStorage;
 }
 
 export { app, auth, db, storage }; 

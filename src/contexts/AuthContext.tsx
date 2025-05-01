@@ -9,7 +9,8 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   updateProfile,
-  UserCredential
+  UserCredential,
+  Auth
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
