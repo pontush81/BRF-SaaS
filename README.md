@@ -19,8 +19,8 @@ BRF-SaaS är en molnbaserad plattform som gör det möjligt för flera bostadsr�
 
 - **Frontend**: Next.js, TypeScript, Tailwind CSS
 - **Backend**: Next.js API Routes
-- **Databas**: PostgreSQL med Row-Level Security för tenant-isolation
-- **Auth**: NextAuth.js / Auth.js med JWT
+- **Databas**: PostgreSQL (Supabase) med Row-Level Security för tenant-isolation
+- **Auth**: Supabase Auth för autentisering
 - **Deployment**: Vercel
 
 ## Utvecklingsmiljö
@@ -29,7 +29,7 @@ BRF-SaaS är en molnbaserad plattform som gör det möjligt för flera bostadsr�
 
 - Node.js 18+
 - npm eller yarn
-- PostgreSQL (lokal installation eller molntjänst)
+- Supabase-konto (för databas och autentisering)
 
 ### Installation
 
@@ -44,32 +44,48 @@ BRF-SaaS är en molnbaserad plattform som gör det möjligt för flera bostadsr�
    npm install
    ```
 
-3. Kopiera `.env.example` till `.env.local` och konfigurera dina miljövariabler:
+3. Kopiera `.env.example` till `.env` och konfigurera dina miljövariabler:
    ```bash
-   cp .env.example .env.local
+   cp .env.example .env
    ```
 
-4. Starta utvecklingsservern:
+4. Konfigurera din Supabase-databas:
+   - Skapa ett nytt projekt på [Supabase](https://supabase.com)
+   - Kopiera anslutningssträngarna till din `.env`-fil
+   - Kör `npx prisma db push` för att skapa databasstrukturen
+
+5. Starta utvecklingsservern:
    ```bash
    npm run dev
    ```
 
-5. Öppna [http://localhost:3000](http://localhost:3000) i din webbläsare.
+6. Öppna [http://localhost:3000](http://localhost:3000) i din webbläsare.
 
 ### Miljövariabler
 
-Skapa en `.env.local` fil med följande variabler:
+Skapa en `.env` fil med följande variabler:
 
 ```
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_DOMAIN=handbok.se
+NEXT_PUBLIC_MARKETING_DOMAIN=localhost:3000
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/brf_saas
+# Database (Prisma)
+# Connect to Supabase via connection pooling
+DATABASE_URL="postgresql://postgres.[project-ref]:[password]@aws-0-eu-north-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
 
-# Auth
+# Direct connection to the database. Used for migrations
+DIRECT_URL="postgresql://postgres.[project-ref]:[password]@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL="https://[project-ref].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+
+# Auth (NextAuth - optional)
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=ditt-hemliga-värde-här
+NEXTAUTH_SECRET=a-random-string-for-development-only
 ```
 
 ## Projektstruktur
@@ -87,7 +103,17 @@ NEXTAUTH_SECRET=ditt-hemliga-värde-här
   /styles               # CSS och stilar
   /types                # TypeScript typdefinitioner
   /config               # Konfigurationsfiler
+/prisma
+  schema.prisma        # Databasschema för Prisma ORM
 ```
+
+## Databashantering
+
+Projektet använder Prisma ORM för att hantera databasen. Några viktiga kommandon:
+
+- `npx prisma db push` - Skapa/uppdatera databas från schema
+- `npx prisma generate` - Generera Prisma Client från schema
+- `npx prisma studio` - Öppna Prisma Studio för att utforska databasen
 
 ## Utvecklingsflöde
 
