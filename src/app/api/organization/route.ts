@@ -1,66 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createOrganization, getOrganizationBySlug, updateOrganization, deleteOrganization } from '@/lib/organizations';
-import { supabase } from '@/lib/supabase';
+import { createOrganization, getAllOrganizations, getOrganizationById, updateOrganization, deleteOrganization } from '@/lib/organizations';
+import { createClient } from '@/lib/supabase/server';
 
-// Hjälpfunktion för att verifiera admin-behörighet
+// Helper för att verifiera admin-behörighet
 async function verifyAdmin(request: NextRequest) {
-  try {
-    // Hämta Authorization-header från request
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { isAdmin: false, error: 'Unauthorized' };
-    }
-
-    const token = authHeader.split(' ')[1];
-    
-    // Verifiera med Supabase
-    const { data, error } = await supabase.auth.getUser(token);
-    
-    if (error || !data.user) {
-      return { isAdmin: false, error: 'Invalid token' };
-    }
-
-    // Här skulle vi kunna kontrollera om användaren är admin
-    // För tillfället godkänner vi alla autentiserade användare
-    return { isAdmin: true, userId: data.user.id };
-  } catch (error) {
-    console.error('Error verifying admin:', error);
-    return { isAdmin: false, error: 'Server error' };
+  const supabase = createClient();
+  
+  // Kontrollera autentisering
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    return { authorized: false, error: 'Unauthorized', status: 401 };
   }
+  
+  // Hämta användarens roll från database
+  const { data: userData, error } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+  
+  if (error || !userData) {
+    return { authorized: false, error: 'User not found', status: 404 };
+  }
+  
+  if (userData.role !== 'ADMIN' && userData.role !== 'SUPERADMIN') {
+    return { authorized: false, error: 'Forbidden', status: 403 };
+  }
+  
+  return { authorized: true, userId: user.id };
 }
 
-// GET /api/organization?slug=...
+// Hämta alla organisationer (endast för admin)
 export async function GET(request: NextRequest) {
+  const auth = await verifyAdmin(request);
+  
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  
   try {
-    const { searchParams } = new URL(request.url);
-    const slug = searchParams.get('slug');
-    
-    if (!slug) {
-      return NextResponse.json({ error: 'Slug is required' }, { status: 400 });
-    }
-    
-    const organization = await getOrganizationBySlug(slug);
-    
-    if (!organization) {
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
-    }
-    
-    return NextResponse.json({ organization });
+    const organizations = await getAllOrganizations();
+    return NextResponse.json(organizations);
   } catch (error) {
-    console.error('Error fetching organization:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error fetching organizations:', error);
+    return NextResponse.json({ error: 'Failed to fetch organizations' }, { status: 500 });
   }
 }
 
-// POST /api/organization
+// Skapa en ny organisation
 export async function POST(request: NextRequest) {
+  const auth = await verifyAdmin(request);
+  
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  
   try {
-    const { isAdmin, error } = await verifyAdmin(request);
-    
-    if (!isAdmin) {
-      return NextResponse.json({ error }, { status: 401 });
-    }
-    
     const body = await request.json();
     
     if (!body.name) {
@@ -71,71 +67,77 @@ export async function POST(request: NextRequest) {
       name: body.name,
       slug: body.slug,
       domain: body.domain,
+      userId: body.userId || auth.userId // Använd userId från auth om inget annat anges
     });
     
-    return NextResponse.json({ organization }, { status: 201 });
-  } catch (error) {
+    return NextResponse.json(organization);
+  } catch (error: any) {
     console.error('Error creating organization:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to create organization' }, { status: 500 });
   }
 }
 
-// PATCH /api/organization?id=...
+// Uppdatera en organisation
 export async function PATCH(request: NextRequest) {
+  const auth = await verifyAdmin(request);
+  
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  
   try {
-    const { isAdmin, error } = await verifyAdmin(request);
-    
-    if (!isAdmin) {
-      return NextResponse.json({ error }, { status: 401 });
-    }
-    
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    
-    if (!id) {
-      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
-    }
-    
     const body = await request.json();
     
-    if (Object.keys(body).length === 0) {
-      return NextResponse.json({ error: 'No update data provided' }, { status: 400 });
+    if (!body.id) {
+      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
     
-    const organization = await updateOrganization(id, {
+    // Kontrollera att organisationen finns
+    const existingOrg = await getOrganizationById(body.id);
+    if (!existingOrg) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+    
+    const updatedOrganization = await updateOrganization(body.id, {
       name: body.name,
       slug: body.slug,
-      domain: body.domain,
+      domain: body.domain
     });
     
-    return NextResponse.json({ organization });
-  } catch (error) {
+    return NextResponse.json(updatedOrganization);
+  } catch (error: any) {
     console.error('Error updating organization:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to update organization' }, { status: 500 });
   }
 }
 
-// DELETE /api/organization?id=...
+// Ta bort en organisation
 export async function DELETE(request: NextRequest) {
+  const auth = await verifyAdmin(request);
+  
+  if (!auth.authorized) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  
   try {
-    const { isAdmin, error } = await verifyAdmin(request);
-    
-    if (!isAdmin) {
-      return NextResponse.json({ error }, { status: 401 });
-    }
-    
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
     
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    }
+    
+    // Kontrollera att organisationen finns
+    const existingOrg = await getOrganizationById(id);
+    if (!existingOrg) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
     
     await deleteOrganization(id);
     
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting organization:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to delete organization' }, { status: 500 });
   }
 } 

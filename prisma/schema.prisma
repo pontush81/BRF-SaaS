@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -14,186 +13,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Multi-tenant: Organizations (Bostadsrättsföreningar)
+// Organisationsmodell för multi-tenant
 model Organization {
-  id            String    @id @default(uuid())
+  id            String         @id @default(uuid())
   name          String
-  slug          String    @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
-  domain        String?   @unique // För anpassad domän (frivillig)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  slug          String         @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
+  domain        String?        @unique // För anpassad domän (frivillig)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   users         User[]
   handbook      Handbook?
   subscription  Subscription?
-
-  // Relations
-  properties  Property[]
-  units       Unit[]
-  documents   Document[]
-  issues      Issue[]
-
-  @@map("organizations")
+  properties    Property[]
+  units         Unit[]
+  documents     Document[]
+  issues        Issue[]
 }
 
-// Users
+// Användarmodell
 model User {
-  id             String       @id @default(uuid())
-  email          String       @unique
+  id             String          @id @default(uuid())
+  email          String          @unique
   name           String?
-  role           UserRole     @default(MEMBER)
-  firebaseUid    String?      @unique
+  role           UserRole        @default(MEMBER)
+  firebaseUid    String?         @unique
   organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  accounts      Account[]
-  sessions      Session[]
-
-  @@map("users")
-}
-
-// Link table for users and organizations with roles
-model UserOrganization {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String       @db.ObjectId
-  organizationId String       @db.ObjectId
-  role           UserRole     @default(MEMBER)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, organizationId])
-  @@map("user_organizations")
-}
-
-// Properties (Fastigheter)
-model Property {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  name           String
-  address        String
-  organizationId String       @db.ObjectId
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  units          Unit[]
-
-  @@map("properties")
-}
-
-// Units (Lägenheter)
-model Unit {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  unitNumber     String
-  floor          Int?
-  size           Float?
-  rooms          Int?
-  propertyId     String       @db.ObjectId
-  organizationId String       @db.ObjectId
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  property       Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("units")
-}
-
-// Documents
-model Document {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  name           String
-  description    String?
-  fileUrl        String
-  fileType       String
-  fileSize       Int
-  organizationId String       @db.ObjectId
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("documents")
-}
-
-// Issues (Ärenden)
-model Issue {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  title          String
-  description    String?
-  status         IssueStatus  @default(OPEN)
-  priority       IssuePriority @default(MEDIUM)
-  organizationId String       @db.ObjectId
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  // Relations
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("issues")
-}
-
-// Auth related models
-model Account {
-  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId             String   @db.ObjectId
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
-}
-
-model Session {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  sessionToken String   @unique
-  userId       String   @db.ObjectId
-  expires      DateTime
-
-  // Relations
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("sessions")
-}
-
-// Enums
-enum UserRole {
-  ADMIN
-  EDITOR
-  MEMBER
-}
-
-enum IssueStatus {
-  OPEN
-  IN_PROGRESS
-  RESOLVED
-  CLOSED
-}
-
-enum IssuePriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
+  organization   Organization?   @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  accounts       Account[]
+  sessions       Session[]
 }
 
 // Handboksmodell - huvudsakligt innehåll
@@ -245,6 +94,96 @@ model Subscription {
   updatedAt       DateTime     @updatedAt
 }
 
+// Fastighetsmodell
+model Property {
+  id             String       @id @default(uuid())
+  name           String
+  address        String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  units          Unit[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Lägenhetsmodell
+model Unit {
+  id             String       @id @default(uuid())
+  unitNumber     String       // Lägenhetsnummer
+  floor          Int?
+  size           Float?       // Bostadsyta i kvm
+  rooms          Int?
+  propertyId     String
+  property       Property     @relation(fields: [propertyId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Dokumentmodell
+model Document {
+  id             String       @id @default(uuid())
+  title          String
+  description    String?
+  fileUrl        String
+  fileType       String
+  fileSize       Int
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  category       DocCategory  @default(OTHER)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Ärendemodell
+model Issue {
+  id             String       @id @default(uuid())
+  title          String
+  description    String?
+  status         IssueStatus  @default(OPEN)
+  priority       IssuePriority @default(MEDIUM)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Kontohanterings-relaterade modeller
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Enumtyper
+enum UserRole {
+  ADMIN
+  EDITOR
+  MEMBER
+}
+
 enum PlanType {
   BASIC
   STANDARD
@@ -256,4 +195,26 @@ enum SubStatus {
   PAST_DUE
   CANCELED
   TRIAL
+}
+
+enum DocCategory {
+  FINANCIAL
+  PROTOCOL
+  TECHNICAL
+  RULES
+  OTHER
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }

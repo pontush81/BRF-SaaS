@@ -1,70 +1,89 @@
-import React from 'react';
+import { getOrganizationBySlug } from '@/lib/organizations';
 import { notFound } from 'next/navigation';
-import { getOrganizationBySlugCached } from '@/lib/organizations';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { Metadata } from 'next';
+import Link from 'next/link';
 
-interface OrganizationLayoutProps {
-  children: React.ReactNode;
-  params: {
-    slug: string;
-  };
-}
-
-// Metadata blir genererad dynamiskt baserat på organisationsnamnet
-export async function generateMetadata({ params }: OrganizationLayoutProps) {
-  const { slug } = params;
-  const organization = await getOrganizationBySlugCached(slug);
+// Generera metadata för sidan
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}): Promise<Metadata> {
+  const organization = await getOrganizationBySlug(params.slug);
   
   if (!organization) {
     return {
-      title: 'Organisation hittades inte',
-      description: 'Vi kunde inte hitta den angivna organisationen',
+      title: 'Hittades inte',
+      description: 'Föreningen hittades inte',
     };
   }
   
   return {
-    title: `${organization.name} - Digital Handbok`,
-    description: `Digital handbok för ${organization.name}`,
-    keywords: `brf, bostadsrättsförening, handbok, ${organization.name}`,
+    title: {
+      default: organization.name,
+      template: `%s | ${organization.name}`,
+    },
+    description: `Digital bostadshandbok för ${organization.name}`,
   };
 }
 
-export default async function OrganizationLayout({ children, params }: OrganizationLayoutProps) {
-  const { slug } = params;
-  const organization = await getOrganizationBySlugCached(slug);
+export default async function OrganizationLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: { slug: string };
+}) {
+  const organization = await getOrganizationBySlug(params.slug);
   
-  // Om organisationen inte finns, visa 404
   if (!organization) {
     notFound();
   }
   
   return (
-    <div className="organization-layout">
-      {/* Placera organisationens information i en React context för att komma åt den i komponentträdet */}
-      <AuthProvider>
-        <div className="min-h-screen bg-gray-50">
-          <header className="bg-white shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <h1 className="text-2xl font-semibold text-gray-900">{organization.name}</h1>
-              {organization.handbook && (
-                <p className="text-sm text-gray-600">{organization.handbook.description}</p>
-              )}
-            </div>
-          </header>
+    <div className="min-h-screen flex flex-col">
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              <Link href={`/${params.slug}`} className="hover:text-blue-600 transition">
+                {organization.name}
+              </Link>
+            </h1>
+            <p className="text-sm text-gray-500">Digital bostadshandbok</p>
+          </div>
           
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {children}
-          </main>
-          
-          <footer className="bg-white shadow-sm mt-auto">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <p className="text-sm text-gray-600">
-                © {new Date().getFullYear()} {organization.name} - Powered by BRF Handbok
+          {/* Lägg till meny här senare */}
+        </div>
+      </header>
+      
+      <main className="flex-grow bg-gray-50">
+        {children}
+      </main>
+      
+      <footer className="bg-white border-t">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-gray-500">
+                &copy; {new Date().getFullYear()} {organization.name}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Drivs av BRF-SaaS
               </p>
             </div>
-          </footer>
+            
+            <div>
+              <Link 
+                href="/"
+                className="text-sm text-gray-500 hover:text-blue-600 transition"
+              >
+                Hem
+              </Link>
+            </div>
+          </div>
         </div>
-      </AuthProvider>
+      </footer>
     </div>
   );
 } 

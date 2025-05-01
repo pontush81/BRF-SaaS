@@ -1,93 +1,132 @@
+import { notFound } from 'next/navigation';
+import { getOrganizationBySlug } from '@/lib/organizations';
+import { getHandbookByOrgId } from '@/lib/handbooks';
 import Link from 'next/link';
-import { getOrganizationBySlugCached } from '@/lib/organizations';
-import { PrismaClient } from '@prisma/client';
+import { Suspense } from 'react';
+import { Metadata, ResolvingMetadata } from 'next';
 
-// Instansiera Prisma-klienten
-const prisma = new PrismaClient();
+// CSS-klasser för markdown-rendering
+const markdownClasses = 'prose prose-slate max-w-none prose-headings:scroll-mt-28 prose-headings:font-semibold prose-a:font-semibold prose-a:underline prose-pre:bg-slate-900';
 
-// Hämta sektioner och sidor för en handbok
-async function getHandbookContent(handbookId: string) {
-  try {
-    const sections = await prisma.section.findMany({
-      where: { handbookId },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        pages: {
-          orderBy: { sortOrder: 'asc' }
-        }
-      }
-    });
-    return sections;
-  } catch (error) {
-    console.error('Error fetching handbook content:', error);
-    return [];
-  }
+interface Page {
+  id: string;
+  title: string;
+  content: string;
 }
 
-interface OrganizationPageProps {
-  params: {
-    slug: string;
+interface Section {
+  id: string;
+  title: string;
+  pages: Page[];
+}
+
+interface SectionProps {
+  title: string;
+  pages: Page[];
+}
+
+// Komponent för en sektion i handboken
+function HandbookSection({ title, pages }: SectionProps) {
+  if (!pages || pages.length === 0) return null;
+  
+  return (
+    <div className="mb-16">
+      <h2 className="text-2xl font-bold mb-4">{title}</h2>
+      <div className="space-y-12">
+        {pages.map((page) => (
+          <div key={page.id} className="border-b pb-8 last:border-b-0">
+            <h3 className="text-xl font-semibold mb-4">{page.title}</h3>
+            <div
+              className={markdownClasses}
+              dangerouslySetInnerHTML={{ __html: page.content.replace(/\n/g, '<br>') }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Ladda metadata för sidan
+export async function generateMetadata(
+  { params }: { params: { slug: string } },
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  const organization = await getOrganizationBySlug(params.slug);
+  
+  if (!organization) {
+    return {
+      title: 'Förening hittades inte',
+      description: 'Den begärda föreningen kunde inte hittas.'
+    };
+  }
+  
+  const handbook = await getHandbookByOrgId(organization.id);
+  
+  return {
+    title: `${organization.name} | Bostadshandbok`,
+    description: `Digital bostadshandbok för ${organization.name}`,
+    openGraph: {
+      title: `${organization.name} | Bostadshandbok`,
+      description: `Digital bostadshandbok för ${organization.name}`,
+      type: 'website',
+    },
   };
 }
 
-export default async function OrganizationPage({ params }: OrganizationPageProps) {
-  const { slug } = params;
-  const organization = await getOrganizationBySlugCached(slug);
+// Huvudkomponent för handbokssidan
+export default async function OrganizationHandbookPage({ params }: { params: { slug: string } }) {
+  const organization = await getOrganizationBySlug(params.slug);
   
-  // Hämta handboksinnehåll
-  let sections = [];
-  if (organization?.handbook) {
-    sections = await getHandbookContent(organization.handbook.id);
+  if (!organization) {
+    notFound();
+  }
+  
+  const handbook = await getHandbookByOrgId(organization.id);
+  
+  if (!handbook) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8 text-center">
+        <h1 className="text-3xl font-bold mb-4">Handbok saknas</h1>
+        <p className="text-gray-600 mb-8">
+          Ingen handbok har skapats för denna förening ännu.
+        </p>
+      </div>
+    );
   }
   
   return (
-    <div className="bg-white shadow-sm rounded-lg overflow-hidden">
-      <div className="px-4 py-5 sm:px-6">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {organization?.handbook?.title || `${organization?.name} Handbok`}
-        </h2>
-        <p className="mt-1 text-sm text-gray-600">
-          {organization?.handbook?.description || 'Digital handbok för er bostadsrättsförening'}
+    <main className="max-w-4xl mx-auto px-4 py-8">
+      <header className="mb-12">
+        <h1 className="text-3xl font-bold mb-2">{handbook.title}</h1>
+        <p className="text-gray-600">
+          Senast uppdaterad: {new Date(handbook.updatedAt).toLocaleDateString('sv-SE')}
         </p>
-      </div>
+      </header>
       
-      <div className="border-t border-gray-200">
-        <div className="px-4 py-5 sm:p-6">
-          {sections.length > 0 ? (
-            <div className="space-y-8">
-              {sections.map((section) => (
-                <div key={section.id} className="bg-gray-50 p-4 rounded-md">
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">{section.title}</h3>
-                  
-                  {section.pages.length > 0 ? (
-                    <ul className="space-y-2">
-                      {section.pages.map((page) => (
-                        <li key={page.id} className="bg-white shadow-sm rounded-md">
-                          <Link href={`/${slug}/page/${page.id}`} className="block px-4 py-3 hover:bg-gray-50">
-                            <div className="text-sm font-medium text-blue-600">{page.title}</div>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-gray-500 italic">Inga sidor tillagda ännu.</p>
-                  )}
-                </div>
-              ))}
-            </div>
+      <Suspense fallback={<div>Laddar innehåll...</div>}>
+        <div className="mb-16">
+          {handbook.sections && handbook.sections.length > 0 ? (
+            handbook.sections.map((section: Section) => (
+              <HandbookSection 
+                key={section.id}
+                title={section.title}
+                pages={section.pages}
+              />
+            ))
           ) : (
-            <div className="text-center py-10">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Välkommen till er digitala handbok</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Handboken håller på att skapas. Snart kommer ni att kunna se allt innehåll här.
-              </p>
-              <p className="text-xs text-gray-500">
-                Kontakta supporten om ni har några frågor.
-              </p>
-            </div>
+            <p className="text-gray-600 italic">
+              Denna handbok har inga sektioner ännu.
+            </p>
           )}
         </div>
-      </div>
-    </div>
+      </Suspense>
+      
+      <footer className="mt-16 text-center border-t pt-8">
+        <p className="text-sm text-gray-500">
+          &copy; {new Date().getFullYear()} {organization.name}
+        </p>
+      </footer>
+    </main>
   );
 } 
