@@ -34,7 +34,11 @@ export default function RegisterPage() {
       // Update profile with name
       await updateUserProfile(name);
       
-      console.log('User registered successfully:', userCredential.user);
+      if (userCredential) {
+        console.log('User registered successfully:', userCredential.user);
+      } else {
+        console.log('User registered successfully (in development mode)');
+      }
       
       // Redirect to dashboard
       router.push('/dashboard');

@@ -19,10 +19,18 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      await login(email, password);
+      const userCredential = await login(email, password);
+      
+      if (userCredential) {
+        console.log('Login successful:', userCredential.user);
+      } else {
+        console.log('Login successful (in development mode)');
+      }
+      
       router.push('/dashboard');
       router.refresh();
     } catch (error: any) {
+      console.error('Login error:', error);
       setError(error.message || 'Inloggningen misslyckades');
     } finally {
       setLoading(false);
