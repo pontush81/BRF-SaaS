@@ -10,20 +10,23 @@ generator client {
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 // Multi-tenant: Organizations (Bostadsrättsföreningar)
 model Organization {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  subdomain   String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
+  domain        String?   @unique // För anpassad domän (frivillig)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  users         User[]
+  handbook      Handbook?
+  subscription  Subscription?
 
   // Relations
-  users       UserOrganization[]
   properties  Property[]
   units       Unit[]
   documents   Document[]
@@ -34,17 +37,17 @@ model Organization {
 
 // Users
 model User {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  password      String?
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String       @id @default(uuid())
+  email          String       @unique
+  name           String?
+  role           UserRole     @default(MEMBER)
+  firebaseUid    String?      @unique
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Relations
-  organizations UserOrganization[]
   accounts      Account[]
   sessions      Session[]
 
@@ -175,7 +178,7 @@ model Session {
 // Enums
 enum UserRole {
   ADMIN
-  BOARD_MEMBER
+  EDITOR
   MEMBER
 }
 
@@ -191,4 +194,66 @@ enum IssuePriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+// Handboksmodell - huvudsakligt innehåll
+model Handbook {
+  id              String       @id @default(uuid())
+  title           String
+  description     String?
+  organizationId  String       @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  sections        Section[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+// Sektioner i handboken
+model Section {
+  id          String    @id @default(uuid())
+  title       String
+  sortOrder   Int
+  handbookId  String
+  handbook    Handbook  @relation(fields: [handbookId], references: [id])
+  pages       Page[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Sidor i en sektion
+model Page {
+  id          String    @id @default(uuid())
+  title       String
+  content     String?   @db.Text
+  sortOrder   Int
+  sectionId   String
+  section     Section   @relation(fields: [sectionId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Prenumerationsmodell
+model Subscription {
+  id              String       @id @default(uuid())
+  planType        PlanType     @default(BASIC)
+  status          SubStatus    @default(ACTIVE)
+  startDate       DateTime     @default(now())
+  endDate         DateTime?
+  organizationId  String       @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+enum PlanType {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum SubStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIAL
 }
