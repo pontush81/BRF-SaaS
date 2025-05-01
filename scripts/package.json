@@ -1,0 +1,14 @@
+{
+  "name": "brf-saas-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for BRF-SaaS project management",
+  "private": true,
+  "scripts": {
+    "create-issues": "node create-issues.js",
+    "add-to-project": "node add-to-project.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^19.0.7",
+    "dotenv": "^16.0.3"
+  }
+} 
