@@ -8,17 +8,26 @@ export const metadata: Metadata = {
   description: 'Skapa ett nytt konto för att få tillgång till BRF-handboken',
 };
 
+// Definiera cachestrategin för denna sida
+export const dynamic = 'force-dynamic';
+export const revalidate = 0; // Använd inga cachade värden
+
 export default async function Register({
   searchParams,
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   // Kontrollera om användaren redan är inloggad
-  const supabase = createServerClient();
-  const { data } = await supabase.auth.getSession();
+  try {
+    const supabase = createServerClient();
+    const { data } = await supabase.auth.getSession();
 
-  if (data.session) {
-    redirect('/dashboard');
+    if (data.session) {
+      redirect('/dashboard');
+    }
+  } catch (error) {
+    console.error('Error checking session:', error);
+    // Fortsätt till registreringssidan även om vi inte kunde kontrollera sessionen
   }
 
   // Få registreringstyp från query-parametrar
