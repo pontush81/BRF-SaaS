@@ -4,6 +4,20 @@ import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import Link from 'next/link'
 
+// Definiera typer för section och page för att åtgärda TypeScript-fel
+interface Page {
+  id: string;
+  title: string;
+  sortOrder: number;
+}
+
+interface Section {
+  id: string;
+  title: string;
+  sortOrder: number;
+  pages: Page[];
+}
+
 export const metadata: Metadata = {
   title: 'Redaktör Dashboard - BRF Handbok',
   description: 'Redigera innehåll i din BRF-handbok',
@@ -73,7 +87,7 @@ export default async function EditorDashboard() {
           
           {handbook?.sections && handbook.sections.length > 0 ? (
             <div className="space-y-4">
-              {handbook.sections.map((section) => (
+              {handbook.sections.map((section: Section) => (
                 <div key={section.id} className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
                     <h4 className="font-medium">{section.title}</h4>
@@ -89,7 +103,7 @@ export default async function EditorDashboard() {
                   
                   {section.pages && section.pages.length > 0 ? (
                     <ul className="divide-y">
-                      {section.pages.map((page) => (
+                      {section.pages.map((page: Page) => (
                         <li key={page.id} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
                           <span>{page.title}</span>
                           <Link href={`/editor/handbook/section/${section.id}/page/${page.id}`} className="text-blue-600 hover:text-blue-800 text-sm">

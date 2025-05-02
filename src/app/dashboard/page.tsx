@@ -4,6 +4,27 @@ import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import Link from 'next/link';
 
+// Definiera typer för section, page och doc för att åtgärda TypeScript-fel
+interface Page {
+  id: string;
+  title: string;
+  sortOrder: number;
+}
+
+interface Section {
+  id: string;
+  title: string;
+  sortOrder: number;
+  pages: Page[];
+}
+
+interface Document {
+  id: string;
+  title: string;
+  category: string;
+  updatedAt: Date;
+}
+
 export const metadata: Metadata = {
   title: 'Dashboard - BRF Handbok',
   description: 'Din personliga dashboard för BRF-handboken',
@@ -102,13 +123,13 @@ export default async function Dashboard() {
 
                 {handbook?.sections && handbook.sections.length > 0 ? (
                   <div className="space-y-4">
-                    {handbook.sections.map((section) => (
+                    {handbook.sections.map((section: Section) => (
                       <div key={section.id} className="border rounded-lg overflow-hidden">
                         <div className="bg-gray-50 px-4 py-2 border-b">
                           <h3 className="font-medium">{section.title}</h3>
                         </div>
                         <ul className="divide-y">
-                          {section.pages.map((page) => (
+                          {section.pages.map((page: Page) => (
                             <li key={page.id} className="px-4 py-2 hover:bg-gray-50">
                               <Link href={`/handbook/${section.id}/${page.id}`} className="text-blue-600 hover:underline">
                                 {page.title}
@@ -141,7 +162,7 @@ export default async function Dashboard() {
                 <h2 className="text-lg font-semibold mb-3">Senaste dokument</h2>
                 {documents.length > 0 ? (
                   <ul className="divide-y">
-                    {documents.map((doc) => (
+                    {documents.map((doc: Document) => (
                       <li key={doc.id} className="py-2">
                         <Link href={`/documents/${doc.id}`} className="text-blue-600 hover:underline block">
                           {doc.title}
