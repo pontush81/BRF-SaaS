@@ -11,7 +11,7 @@ const markdownClasses = 'prose prose-slate max-w-none prose-headings:scroll-mt-2
 interface Page {
   id: string;
   title: string;
-  content: string;
+  content: string | null;
 }
 
 interface Section {
@@ -38,7 +38,7 @@ function HandbookSection({ title, pages }: SectionProps) {
             <h3 className="text-xl font-semibold mb-4">{page.title}</h3>
             <div
               className={markdownClasses}
-              dangerouslySetInnerHTML={{ __html: page.content.replace(/\n/g, '<br>') }}
+              dangerouslySetInnerHTML={{ __html: page.content?.replace(/\n/g, '<br>') || '' }}
             />
           </div>
         ))}
