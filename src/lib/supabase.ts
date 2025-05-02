@@ -7,13 +7,19 @@ declare global {
   var supabase: SupabaseClient | undefined
 }
 
+// Definiera konstanter från miljövariabler
+// Detta tillåter att vi kan hårdkoda värdena under utveckling om det behövs
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lcckqvnwnrgvpnpavhyp.supabase.co'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjY2txdm53bnJndnBucGF2aHlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTg2NzMwODYsImV4cCI6MjAzNDI0OTA4Nn0.fUOFr-fPX9FdO9vIvyRDr18FrghGShZZjsgb4nrD0OU'
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjY2txdm53bnJndnBucGF2aHlwIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxODY3MzA4NiwiZXhwIjoyMDM0MjQ5MDg2fQ.GKPmbPBt2G81NRZVszw8rZ-rUzrQ9BpXU69nXhRm3fI'
+
 /**
  * Create a Supabase client for use in the browser
  */
 export const createBrowserSupabaseClient = () => {
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
   )
 }
 
@@ -22,8 +28,8 @@ export const createBrowserSupabaseClient = () => {
  */
 export const createServerClient = () => {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
     {
       auth: {
         autoRefreshToken: false,
@@ -33,27 +39,13 @@ export const createServerClient = () => {
   )
 }
 
-// Kontrollera om miljövariabler är placeholders
+// Kontrollera miljövariabler - endast för loggning
 const checkEnvironmentVariables = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || supabaseUrl.includes('[project-ref]')) {
-    console.warn('Warning: NEXT_PUBLIC_SUPABASE_URL is not set correctly');
-    return false;
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Supabase URL:', SUPABASE_URL ? 'defined' : 'undefined');
+    console.log('Supabase Anon Key:', SUPABASE_ANON_KEY ? 'defined' : 'undefined');
+    console.log('Supabase Service Role Key:', SUPABASE_SERVICE_ROLE_KEY ? 'defined' : 'undefined');
   }
-
-  if (!supabaseAnonKey || supabaseAnonKey === 'your-anon-key') {
-    console.warn('Warning: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set correctly');
-    return false;
-  }
-
-  if (!serviceRoleKey || serviceRoleKey === 'your-service-role-key') {
-    console.warn('Warning: SUPABASE_SERVICE_ROLE_KEY is not set correctly');
-    return false;
-  }
-
   return true;
 };
 
@@ -62,19 +54,29 @@ let supabase: SupabaseClient;
 
 if (typeof window === 'undefined') {
   // Servermiljö
-  if (!global.supabase) {
-    // Kontrollera miljövariabler endast i utvecklingsmiljö
-    if (process.env.NODE_ENV === 'development') {
+  try {
+    if (!global.supabase) {
+      // Kontrollera miljövariabler endast i utvecklingsmiljö
       checkEnvironmentVariables();
+      
+      global.supabase = createServerClient();
     }
+    supabase = global.supabase;
+  } catch (error) {
+    console.error('Failed to initialize Supabase server client:', error);
     
-    global.supabase = createServerClient();
+    throw new Error('Failed to initialize Supabase server client');
   }
-  supabase = global.supabase;
 } else {
   // Klientmiljö - detta bör inte användas direkt,
   // använd createBrowserSupabaseClient istället
-  supabase = createServerClient();
+  try {
+    supabase = createServerClient();
+  } catch (error) {
+    console.error('Failed to initialize Supabase client:', error);
+    
+    throw new Error('Failed to initialize Supabase client');
+  }
 }
 
 export { supabase };

@@ -1,110 +1,238 @@
 import { Metadata } from 'next';
+import { getCurrentUser, UserRole, hasRole } from '@/lib/auth/roleUtils';
+import { redirect } from 'next/navigation';
+import prisma from '@/lib/prisma';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Dashboard | BRF-SaaS',
-  description: 'Hantera din bostadsrättsförening',
+  title: 'Dashboard - BRF Handbok',
+  description: 'Din personliga dashboard för BRF-handboken',
 };
 
-export default function DashboardPage() {
+export default async function Dashboard() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  // Hämta information om organisationen om användaren är kopplad till en
+  const organization = user.organization;
+
+  // Om användaren är admin eller editor, visa relevanta länkar
+  const isAdmin = hasRole(user, UserRole.ADMIN);
+  const isEditor = hasRole(user, UserRole.EDITOR);
+
+  // Hämta data beroende på tillhörighet
+  let handbook = null;
+  let documents = [];
+  let properties = [];
+
+  if (organization) {
+    // Hämta data om organisationen
+    [handbook, documents, properties] = await Promise.all([
+      // Hämta handboksinformation
+      prisma.handbook.findUnique({
+        where: { organizationId: organization.id },
+        include: {
+          sections: {
+            orderBy: { sortOrder: 'asc' },
+            include: { 
+              pages: { 
+                orderBy: { sortOrder: 'asc' },
+                take: 5 
+              } 
+            },
+            take: 3
+          }
+        }
+      }),
+      // Hämta senaste dokumenten
+      prisma.document.findMany({
+        where: { organizationId: organization.id },
+        orderBy: { updatedAt: 'desc' },
+        take: 5
+      }),
+      // Hämta fastigheter
+      prisma.property.findMany({
+        where: { organizationId: organization.id },
+        include: { units: { take: 3 } },
+        take: 3
+      })
+    ]);
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Statistik-kort */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Sammanfattning</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-500">Lägenheter</p>
-                <p className="text-2xl font-bold">24</p>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+
+      {organization ? (
+        <>
+          {/* Admin/Editor-länkar */}
+          {(isAdmin || isEditor) && (
+            <div className="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
+              <h2 className="text-lg font-medium text-blue-800 mb-3">
+                Du är {isAdmin ? 'administratör' : 'redaktör'} för {organization.name}
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {isAdmin && (
+                  <Link href="/admin" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
+                    Administrera BRF
+                  </Link>
+                )}
+                {(isAdmin || isEditor) && (
+                  <Link href="/editor" className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm">
+                    Redigera innehåll
+                  </Link>
+                )}
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Dokument</p>
-                <p className="text-2xl font-bold">12</p>
+            </div>
+          )}
+
+          {/* Handbok */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="md:col-span-2">
+              <div className="bg-white p-6 rounded-lg shadow-sm h-full">
+                <h2 className="text-xl font-semibold mb-4">
+                  {handbook?.title || `${organization.name} Handbok`}
+                </h2>
+                <p className="text-gray-600 mb-6">
+                  {handbook?.description || 'Din BRFs digitala handbok med all viktig information samlad på ett ställe.'}
+                </p>
+
+                {handbook?.sections && handbook.sections.length > 0 ? (
+                  <div className="space-y-4">
+                    {handbook.sections.map((section) => (
+                      <div key={section.id} className="border rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-4 py-2 border-b">
+                          <h3 className="font-medium">{section.title}</h3>
+                        </div>
+                        <ul className="divide-y">
+                          {section.pages.map((page) => (
+                            <li key={page.id} className="px-4 py-2 hover:bg-gray-50">
+                              <Link href={`/handbook/${section.id}/${page.id}`} className="text-blue-600 hover:underline">
+                                {page.title}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                        {section.pages.length === 0 && (
+                          <p className="px-4 py-2 text-gray-500 italic text-sm">
+                            Inga sidor i denna sektion
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">Handboken har inte konfigurerats än.</p>
+                    <Link href="/handbook" className="text-blue-600 hover:underline">
+                      Utforska hela handboken
+                    </Link>
+                  </div>
+                )}
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Ärenden</p>
-                <p className="text-2xl font-bold">3</p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Senaste Dokument */}
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h2 className="text-lg font-semibold mb-3">Senaste dokument</h2>
+                {documents.length > 0 ? (
+                  <ul className="divide-y">
+                    {documents.map((doc) => (
+                      <li key={doc.id} className="py-2">
+                        <Link href={`/documents/${doc.id}`} className="text-blue-600 hover:underline block">
+                          {doc.title}
+                        </Link>
+                        <p className="text-xs text-gray-500">
+                          {new Date(doc.updatedAt).toLocaleDateString('sv-SE')} • {doc.category}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 text-sm">Inga dokument tillgängliga</p>
+                )}
+                <div className="mt-3 pt-3 border-t">
+                  <Link href="/documents" className="text-blue-600 hover:underline text-sm">
+                    Visa alla dokument
+                  </Link>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Medlemmar</p>
-                <p className="text-2xl font-bold">36</p>
+
+              {/* Snabblänkar */}
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h2 className="text-lg font-semibold mb-3">Snabblänkar</h2>
+                <ul className="space-y-2">
+                  <li>
+                    <Link href="/profile" className="text-blue-600 hover:underline">
+                      Min profil
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/handbook" className="text-blue-600 hover:underline">
+                      Handbok
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/documents" className="text-blue-600 hover:underline">
+                      Dokument
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/issues" className="text-blue-600 hover:underline">
+                      Felanmälan
+                    </Link>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
-          
-          {/* Senaste aktivitet */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Senaste aktivitet</h2>
-            <ul className="space-y-3">
-              <li className="flex items-start">
-                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">Dokument</span>
-                <p className="ml-2 text-sm">Årsredovisning 2023 uppladdad</p>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">Ärende</span>
-                <p className="ml-2 text-sm">Felanmälan garage löst</p>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-0.5 rounded">Medlem</span>
-                <p className="ml-2 text-sm">Ny medlem tillagd: Anna Andersson</p>
-              </li>
-              <li className="flex items-start">
-                <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-0.5 rounded">Handbok</span>
-                <p className="ml-2 text-sm">Sida "Flyttregler" uppdaterad</p>
-              </li>
-            </ul>
-          </div>
-          
-          {/* Kommande händelser */}
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-4">Kommande händelser</h2>
-            <ul className="space-y-3">
-              <li className="border-l-4 border-blue-500 pl-3 py-1">
-                <p className="font-medium">Styrelsemöte</p>
-                <p className="text-sm text-gray-500">25 juni, 18:00 - 20:00</p>
-              </li>
-              <li className="border-l-4 border-green-500 pl-3 py-1">
-                <p className="font-medium">Trädgårdsdag</p>
-                <p className="text-sm text-gray-500">2 juli, 10:00 - 14:00</p>
-              </li>
-              <li className="border-l-4 border-red-500 pl-3 py-1">
-                <p className="font-medium">Underhåll av hissar</p>
-                <p className="text-sm text-gray-500">15 juli, 08:00 - 12:00</p>
-              </li>
-            </ul>
+        </>
+      ) : (
+        // Användaren är inte kopplad till en organisation
+        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-100 mb-8">
+          <h2 className="text-lg font-semibold text-yellow-800 mb-2">
+            Du är inte ansluten till någon bostadsrättsförening
+          </h2>
+          <p className="text-yellow-700 mb-4">
+            För att få åtkomst till din förenings handbok behöver du kopplas till rätt organisation.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link href="/join-organization" className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm">
+              Anslut till en förening
+            </Link>
+            <Link href="/register?type=admin" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
+              Registrera en ny förening
+            </Link>
           </div>
         </div>
-        
-        {/* Snabblänkar */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <a href="/dashboard/documents" className="bg-white p-4 rounded-lg shadow-sm flex items-center hover:shadow-md transition-shadow border border-gray-100">
-            <svg className="w-6 h-6 mr-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span>Dokument</span>
-          </a>
-          <a href="/dashboard/issues" className="bg-white p-4 rounded-lg shadow-sm flex items-center hover:shadow-md transition-shadow border border-gray-100">
-            <svg className="w-6 h-6 mr-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-            </svg>
-            <span>Ärenden</span>
-          </a>
-          <a href="/dashboard/members" className="bg-white p-4 rounded-lg shadow-sm flex items-center hover:shadow-md transition-shadow border border-gray-100">
-            <svg className="w-6 h-6 mr-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <span>Medlemmar</span>
-          </a>
-          <a href="/dashboard/handbook" className="bg-white p-4 rounded-lg shadow-sm flex items-center hover:shadow-md transition-shadow border border-gray-100">
-            <svg className="w-6 h-6 mr-3 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-            <span>Handbok</span>
-          </a>
+      )}
+
+      {/* Information nedan visas alltid */}
+      <div className="bg-white p-6 rounded-lg shadow-sm">
+        <h2 className="text-lg font-semibold mb-3">Din profil</h2>
+        <div className="mb-6">
+          <p className="mb-1">
+            <span className="font-medium">Namn:</span> {user.name || 'Ej angivet'}
+          </p>
+          <p className="mb-1">
+            <span className="font-medium">E-post:</span> {user.email}
+          </p>
+          <p>
+            <span className="font-medium">Roll:</span>{' '}
+            {user.role === UserRole.ADMIN
+              ? 'Administratör'
+              : user.role === UserRole.EDITOR
+              ? 'Redaktör'
+              : 'Medlem'}
+          </p>
         </div>
+        <Link href="/profile" className="text-blue-600 hover:underline">
+          Redigera profil
+        </Link>
       </div>
     </div>
   );

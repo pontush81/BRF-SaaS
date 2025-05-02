@@ -2,15 +2,30 @@
 
 import { useState } from 'react';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
+import { UserRole } from '@/lib/auth/roleUtils';
 
-export default function SignUpForm() {
+interface SignUpFormProps {
+  isAdmin?: boolean;
+  orgSlug?: string;
+}
+
+export default function SignUpForm({ isAdmin = false, orgSlug = '' }: SignUpFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
+  const [organizationSlug, setOrganizationSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
+  
+  // Om vi har ett orgsSlug från URL, använd det
+  useState(() => {
+    if (orgSlug) {
+      setOrganizationSlug(orgSlug);
+    }
+  });
+  
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -26,13 +41,43 @@ export default function SignUpForm() {
         password,
         options: {
           data: {
-            name: name, // Spara användarens namn i user_metadata
+            name,
+            isAdmin, // Spara användarroll i metadata
+            organizationSlug: isAdmin ? organizationSlug : orgSlug,
           },
         },
       });
 
       if (signUpError) {
         throw signUpError;
+      }
+
+      // Skapa metadata för API anrop
+      const userData = {
+        email,
+        name,
+        role: isAdmin ? UserRole.ADMIN : UserRole.MEMBER,
+        organizationName: isAdmin ? organizationName : null,
+        organizationSlug: isAdmin ? organizationSlug : orgSlug,
+      };
+      
+      // Spara användare och organisation i databasen
+      try {
+        const response = await fetch('/api/auth/create-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(userData),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Kunde inte skapa användare i databasen');
+        }
+      } catch (error: any) {
+        console.error('Fel vid databasregistrering:', error);
+        // Fortsätt ändå, eftersom autentiseringen har skapats
       }
 
       // Kontrollera om vi behöver bekräfta e-postadressen
@@ -48,6 +93,8 @@ export default function SignUpForm() {
       setEmail('');
       setPassword('');
       setName('');
+      setOrganizationName('');
+      setOrganizationSlug('');
     } catch (error: any) {
       setErrorMessage(error?.message || 'Ett fel uppstod vid registrering');
       console.error('Registreringsfel:', error);
@@ -56,10 +103,27 @@ export default function SignUpForm() {
     }
   };
 
+  // Generera slug från organisationsnamn
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/å/g, 'a')
+      .replace(/ä/g, 'a')
+      .replace(/ö/g, 'o')
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  };
+
+  // Uppdatera slug när organisationsnamnet ändras (endast för admins)
+  const handleOrganizationNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setOrganizationName(name);
+    setOrganizationSlug(generateSlug(name));
+  };
+
   return (
-    <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-center">Registrera konto</h2>
-      
+    <div className="w-full">
       {errorMessage && (
         <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
           {errorMessage}
@@ -72,10 +136,10 @@ export default function SignUpForm() {
         </div>
       )}
       
-      <form onSubmit={handleSignUp}>
-        <div className="mb-4">
+      <form onSubmit={handleSignUp} className="space-y-4">
+        <div>
           <label htmlFor="name" className="block text-sm font-medium mb-1">
-            Namn
+            Ditt namn
           </label>
           <input
             id="name"
@@ -88,7 +152,7 @@ export default function SignUpForm() {
           />
         </div>
         
-        <div className="mb-4">
+        <div>
           <label htmlFor="email" className="block text-sm font-medium mb-1">
             E-post
           </label>
@@ -103,7 +167,67 @@ export default function SignUpForm() {
           />
         </div>
         
-        <div className="mb-6">
+        {isAdmin && (
+          <>
+            <div>
+              <label htmlFor="organizationName" className="block text-sm font-medium mb-1">
+                Föreningens namn
+              </label>
+              <input
+                id="organizationName"
+                type="text"
+                value={organizationName}
+                onChange={handleOrganizationNameChange}
+                required={isAdmin}
+                placeholder="T.ex. BRF Solsidan"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="organizationSlug" className="block text-sm font-medium mb-1">
+                Föreningens webbadress
+              </label>
+              <div className="flex items-center">
+                <span className="bg-gray-100 px-3 py-2 rounded-l border border-gray-300 border-r-0 text-gray-500">
+                  https://
+                </span>
+                <input
+                  id="organizationSlug"
+                  type="text"
+                  value={organizationSlug}
+                  onChange={(e) => setOrganizationSlug(e.target.value)}
+                  required={isAdmin}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={loading}
+                />
+                <span className="bg-gray-100 px-3 py-2 rounded-r border border-gray-300 border-l-0 text-gray-500">
+                  .handbok.se
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Detta blir din förenings adress för handboken
+              </p>
+            </div>
+          </>
+        )}
+        
+        {!isAdmin && orgSlug && (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Förening
+            </label>
+            <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded text-gray-700">
+              {orgSlug}.handbok.se
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Du registreras som medlem i denna förening
+            </p>
+          </div>
+        )}
+        
+        <div>
           <label htmlFor="password" className="block text-sm font-medium mb-1">
             Lösenord
           </label>
@@ -130,15 +254,6 @@ export default function SignUpForm() {
           {loading ? 'Skapar konto...' : 'Skapa konto'}
         </button>
       </form>
-      
-      <div className="mt-6 border-t pt-4">
-        <p className="text-sm text-center">
-          Har du redan ett konto?{' '}
-          <a href="/login" className="text-blue-600 hover:underline">
-            Logga in
-          </a>
-        </p>
-      </div>
     </div>
   );
 } 
