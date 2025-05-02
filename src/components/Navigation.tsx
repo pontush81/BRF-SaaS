@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,34 +9,8 @@ import { UserRole } from '@/lib/auth/roleUtils';
 
 export default function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, userRole, hasRole, organization } = useAuth();
   const pathname = usePathname();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
-
-  // Hämta användarroll från API när användaren är inloggad
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (user?.email) {
-        try {
-          const response = await fetch(`/api/auth/get-user-role?email=${encodeURIComponent(user.email)}`);
-          if (response.ok) {
-            const data = await response.json();
-            setUserRole(data.role);
-            if (data.organization?.slug) {
-              setOrganizationSlug(data.organization.slug);
-            }
-          }
-        } catch (error) {
-          console.error('Kunde inte hämta användarroll:', error);
-        }
-      }
-    };
-
-    if (user) {
-      fetchUserRole();
-    }
-  }, [user]);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -83,7 +57,7 @@ export default function Navigation() {
               )}
               
               {/* Visa adminlänk för användare med admin-roll */}
-              {userRole === UserRole.ADMIN && (
+              {hasRole(UserRole.ADMIN) && (
                 <Link
                   href="/admin"
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
@@ -97,7 +71,7 @@ export default function Navigation() {
               )}
               
               {/* Visa editor-länk för användare med admin eller editor-roller */}
-              {(userRole === UserRole.ADMIN || userRole === UserRole.EDITOR) && (
+              {hasRole(UserRole.EDITOR) && (
                 <Link
                   href="/editor"
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
@@ -217,7 +191,7 @@ export default function Navigation() {
             </Link>
           )}
           
-          {userRole === UserRole.ADMIN && (
+          {hasRole(UserRole.ADMIN) && (
             <Link
               href="/admin"
               className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
@@ -230,7 +204,7 @@ export default function Navigation() {
             </Link>
           )}
           
-          {(userRole === UserRole.ADMIN || userRole === UserRole.EDITOR) && (
+          {hasRole(UserRole.EDITOR) && (
             <Link
               href="/editor"
               className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
@@ -278,6 +252,7 @@ export default function Navigation() {
                   <div className="text-sm font-medium text-gray-500">
                     {userRole === UserRole.ADMIN ? 'Administratör' : 
                      userRole === UserRole.EDITOR ? 'Redaktör' : 'Medlem'}
+                    {organization && ` - ${organization.name}`}
                   </div>
                 )}
               </div>

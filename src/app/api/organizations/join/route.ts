@@ -1,91 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { UserRole } from '@/lib/auth/roleUtils';
-import { createServerClient } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+  
   try {
-    const { userId, organizationSlug } = await request.json();
-
-    // Validera parametrar
-    if (!userId) {
+    // Verifiera att användaren är autentiserad
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Ej autentiserad' }, { status: 401 });
+    }
+    
+    // Hämta data från förfrågan
+    const body = await request.json();
+    const { userId, organizationSlug } = body;
+    
+    // Validera att nödvändig data finns
+    if (!userId || !organizationSlug) {
       return NextResponse.json(
-        { error: 'Användar-ID saknas' },
+        { error: 'Användar-ID och organisations-slug krävs' }, 
         { status: 400 }
       );
     }
-
-    if (!organizationSlug) {
-      return NextResponse.json(
-        { error: 'Föreningens slug saknas' },
-        { status: 400 }
-      );
+    
+    // Säkerställ att användaren bara kan ansluta sig själv
+    if (session.user.id !== userId && session.user.email) {
+      // Dynamisk import av Prisma för att undvika att importera vid byggtid
+      const { default: prisma } = await import('@/lib/prisma');
+      
+      // Kontrollera om användaren är admin
+      const adminUser = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { role: true }
+      });
+      
+      if (!adminUser || adminUser.role !== UserRole.ADMIN) {
+        return NextResponse.json(
+          { error: 'Du har inte behörighet att ansluta andra användare' }, 
+          { status: 403 }
+        );
+      }
     }
-
-    // Verifiera att användaren finns
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Användaren hittades inte' },
-        { status: 404 }
-      );
-    }
-
-    // Om användaren redan har en organisation
-    if (user.organizationId) {
-      return NextResponse.json(
-        { error: 'Du är redan ansluten till en förening' },
-        { status: 400 }
-      );
-    }
-
-    // Hitta organisationen
+    
+    // Hämta organisationen baserat på slug
+    const { default: prisma } = await import('@/lib/prisma');
+    
     const organization = await prisma.organization.findUnique({
-      where: { slug: organizationSlug }
+      where: { slug: organizationSlug },
     });
-
+    
     if (!organization) {
       return NextResponse.json(
-        { error: 'Föreningen hittades inte. Kontrollera att du angett rätt webbadress.' },
+        { error: 'Föreningen kunde inte hittas' }, 
         { status: 404 }
       );
     }
-
-    // Anslut användaren till organisationen
+    
+    // Uppdatera användaren för att ansluta till organisationen
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         organizationId: organization.id,
-        role: UserRole.MEMBER // Nya användare får alltid medlemsroll
+        role: UserRole.MEMBER, // Standardroll är medlem
       },
       include: {
         organization: {
           select: {
             id: true,
             name: true,
-            slug: true
-          }
-        }
-      }
+            slug: true,
+          },
+        },
+      },
     });
-
-    // Returnera uppdaterad information
+    
     return NextResponse.json({
-      message: `Du har anslutit till ${organization.name}`,
+      success: true,
+      message: 'Användaren har anslutits till föreningen',
       user: {
         id: updatedUser.id,
         email: updatedUser.email,
+        name: updatedUser.name,
         role: updatedUser.role,
-        organization: updatedUser.organization
-      }
+        organization: updatedUser.organization,
+      },
     });
+    
   } catch (error) {
-    console.error('Fel vid anslutning till organisation:', error);
+    console.error('Error joining organization:', error);
     return NextResponse.json(
-      { error: 'Ett oväntat fel inträffade' },
+      { error: 'Ett fel uppstod vid anslutning till föreningen' }, 
       { status: 500 }
     );
   }

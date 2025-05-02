@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { getCurrentUser, UserRole, hasRole } from '@/lib/auth/roleUtils'
+import { getCurrentUserServer, UserRole, hasRole } from '@/lib/auth/roleUtils'
 import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import Link from 'next/link'
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 }
 
 export default async function EditorDashboard() {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserServer()
   
   // Säkerhetskontroll (yttre lager, middleware är första försvarslinjen)
   if (!user || (!hasRole(user, UserRole.ADMIN) && !hasRole(user, UserRole.EDITOR))) {

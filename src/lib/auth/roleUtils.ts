@@ -1,7 +1,4 @@
-import { PrismaClient } from '@prisma/client';
 import { createServerClient } from '../supabase';
-import { cookies } from 'next/headers';
-import prisma from '../prisma';
 
 // Definiera UserRole-enum som motsvarar Prisma-schemat
 export enum UserRole {
@@ -46,9 +43,60 @@ export function hasRole(user: User | UserWithOrg | null, role: UserRole): boolea
 }
 
 /**
- * Hämtar den inloggade användarens information, inklusive roll och organisation
+ * Förbereder en användare vid registrering: skapar användare i databasen
  */
-export async function getCurrentUser(): Promise<UserWithOrg | null> {
+export async function prepareUserOnSignUp(
+  email: string,
+  name: string | null,
+  organizationId: string | null = null,
+  role: UserRole = UserRole.MEMBER
+): Promise<User> {
+  // Dynamisk import av Prisma för att undvika att importera vid byggtid
+  const { default: prisma } = await import('../prisma');
+  
+  // Skapa användare i databasen
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name,
+      role,
+      organizationId
+    }
+  });
+  
+  return user as unknown as User;
+}
+
+/**
+ * Kopplar en befintlig användare till en organisation
+ */
+export async function connectUserToOrganization(
+  userId: string,
+  organizationId: string,
+  role: UserRole = UserRole.MEMBER
+): Promise<User> {
+  // Dynamisk import av Prisma för att undvika att importera vid byggtid
+  const { default: prisma } = await import('../prisma');
+  
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      organizationId,
+      role
+    }
+  });
+  
+  return user as unknown as User;
+}
+
+// === Server Component only functions (App Router) ===
+// Dessa funktioner kan bara användas i server components inom /app katalogen
+
+export async function getCurrentUserServer() {
+  // Dynamisk import för att undvika att importera next/headers och prisma vid byggtid
+  const { cookies } = await import('next/headers');
+  const { default: prisma } = await import('../prisma');
+  
   const cookieStore = cookies();
   const supabase = createServerClient();
   
@@ -75,43 +123,26 @@ export async function getCurrentUser(): Promise<UserWithOrg | null> {
   return dbUser as unknown as UserWithOrg;
 }
 
-/**
- * Förbereder en användare vid registrering: skapar användare i databasen
- */
-export async function prepareUserOnSignUp(
-  email: string,
-  name: string | null,
-  organizationId: string | null = null,
-  role: UserRole = UserRole.MEMBER
-): Promise<User> {
-  // Skapa användare i databasen
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name,
-      role,
-      organizationId
-    }
-  });
-  
-  return user as unknown as User;
-}
+// === För användning i både Pages Router och App Router ===
 
 /**
- * Kopplar en befintlig användare till en organisation
+ * Wrapper för getCurrentUser som kan användas överallt. Inuti /app katalogen 
+ * importeras denna funktion och ger samma resultat som getCurrentUserServer.
+ * 
+ * I /pages katalogen behöver du använda serverSideProps och hämta användaren
+ * från API:et istället.
  */
-export async function connectUserToOrganization(
-  userId: string,
-  organizationId: string,
-  role: UserRole = UserRole.MEMBER
-): Promise<User> {
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      organizationId,
-      role
-    }
-  });
+export async function getCurrentUser(): Promise<UserWithOrg | null> {
+  // Kontrollera om vi är i en server component miljö
+  if (typeof window === 'undefined') {
+    return getCurrentUserServer();
+  }
   
-  return user as unknown as User;
+  // Annars är vi i en klientmiljö, så vi returnerar null
+  // och användaren får istället använda API-anropet i client components
+  console.warn(
+    'getCurrentUser() anropades i en klientkomponent. ' +
+    'Använd useAuth() i context istället.'
+  );
+  return null;
 } 

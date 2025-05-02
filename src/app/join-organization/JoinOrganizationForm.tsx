@@ -2,12 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface JoinOrganizationFormProps {
-  userId: string;
-}
-
-export default function JoinOrganizationForm({ userId }: JoinOrganizationFormProps) {
+export default function JoinOrganizationForm() {
+  const { dbUser, refreshSession } = useAuth();
   const [orgSlug, setOrgSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +17,12 @@ export default function JoinOrganizationForm({ userId }: JoinOrganizationFormPro
     setLoading(true);
     setError(null);
     setSuccess(null);
+
+    if (!dbUser?.id) {
+      setError('Du måste vara inloggad för att gå med i en förening');
+      setLoading(false);
+      return;
+    }
 
     if (!orgSlug.trim()) {
       setError('Var god ange en förening');
@@ -33,7 +37,7 @@ export default function JoinOrganizationForm({ userId }: JoinOrganizationFormPro
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId,
+          userId: dbUser.id,
           organizationSlug: orgSlug.trim().toLowerCase(),
         }),
       });
@@ -45,6 +49,9 @@ export default function JoinOrganizationForm({ userId }: JoinOrganizationFormPro
       }
 
       setSuccess('Du har anslutit dig till föreningen! Omdirigerar...');
+      
+      // Uppdatera användarinformation
+      await refreshSession();
       
       // Vänta en stund och omdirigera till dashboard
       setTimeout(() => {

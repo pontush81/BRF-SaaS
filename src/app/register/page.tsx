@@ -1,7 +1,6 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import SignUpForm from '@/components/auth/SignUpForm';
-import { cookies } from 'next/headers';
 import { createServerClient } from '@/lib/supabase';
 
 export const metadata: Metadata = {
@@ -15,7 +14,6 @@ export default async function Register({
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   // Kontrollera om användaren redan är inloggad
-  const cookieStore = cookies();
   const supabase = createServerClient();
   const { data } = await supabase.auth.getSession();
 

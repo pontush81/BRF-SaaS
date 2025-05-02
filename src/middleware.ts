@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { UserRole } from '@/lib/auth/roleUtils';
 
 // Dessa sidor är alltid tillgängliga även om man inte är inloggad
 const publicPaths = [
@@ -8,16 +9,15 @@ const publicPaths = [
   '/login',
   '/register',
   '/forgot-password',
-  '/about',
-  '/contact',
-  '/pricing',
+  '/om-oss',
+  '/kontakt',
   // Lägg till andra offentliga sidor här
 ];
 
 // Definierar vilka routes som kräver olika behörigheter
 const ADMIN_ROUTES = ['/admin', '/admin/']
 const EDITOR_ROUTES = ['/editor', '/editor/']  
-const AUTH_ROUTES = ['/dashboard', '/profile', '/handbook/edit', ...ADMIN_ROUTES, ...EDITOR_ROUTES]
+const AUTH_ROUTES = ['/dashboard', '/profile', '/join-organization', ...ADMIN_ROUTES, ...EDITOR_ROUTES]
 const GUEST_ROUTES = ['/login', '/register', '/forgot-password']
 
 export async function middleware(req: NextRequest) {
@@ -36,26 +36,31 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getSession();
 
   // Hämta användare från databasen om inloggad
-  let role = 'GUEST'
+  let role = UserRole.MEMBER; // Standard: MEMBER
+  let isLoggedIn = false;
+  
   if (session?.user?.email) {
+    isLoggedIn = true;
     try {
       // Använd Fetch API med serverless-funktion för att hämta användarroll
       // Detta krävs eftersom prisma inte kan användas direkt i middleware
-      const userRes = await fetch(`${req.nextUrl.origin}/api/auth/get-user-role?email=${encodeURIComponent(session.user.email)}`, {
+      const userRes = await fetch(`${req.nextUrl.origin}/api/auth/current-user`, {
         headers: { 
           'Content-Type': 'application/json',
           // Skicka med autentisering för API route
           'Authorization': `Bearer ${session.access_token}`
         }
-      })
+      });
       
       if (userRes.ok) {
-        const userData = await userRes.json()
-        role = userData.role || 'GUEST'
+        const userData = await userRes.json();
+        if (userData && userData.role) {
+          role = userData.role as UserRole;
+        }
       }
     } catch (error) {
-      console.error('Error fetching user role:', error)
-      // Vid fel, fortsätt med GUEST roll
+      console.error('Error fetching user role:', error);
+      // Vid fel, fortsätt som vanlig medlem
     }
   }
 
@@ -71,30 +76,30 @@ export async function middleware(req: NextRequest) {
                            pathname.includes('.') ||
                            pathname.startsWith('/favicon.ico');
 
-  // Om det är en statisk resurs, skippa autentiseringskontrollen
-  if (isStaticResource) {
+  // Om det är en statisk resurs eller API-rutt, skippa autentiseringskontrollen
+  if (isStaticResource || isApiRoute) {
     return response;
   }
 
   // Om användaren inte är inloggad och försöker nå en skyddad sida
-  if (!session && AUTH_ROUTES.some(route => pathname.startsWith(route))) {
+  if (!isLoggedIn && AUTH_ROUTES.some(route => pathname.startsWith(route))) {
     const redirectUrl = new URL('/login', req.url);
     redirectUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
   // Om användaren är inloggad och försöker nå en gästsida
-  if (session && GUEST_ROUTES.some(route => pathname.startsWith(route))) {
+  if (isLoggedIn && GUEST_ROUTES.some(route => pathname.startsWith(route))) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   // Kontrollera rollbaserad åtkomst
-  if (ADMIN_ROUTES.some(route => pathname.startsWith(route)) && role !== 'ADMIN') {
+  if (ADMIN_ROUTES.some(route => pathname.startsWith(route)) && role !== UserRole.ADMIN) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
   
   if (EDITOR_ROUTES.some(route => pathname.startsWith(route)) && 
-     (role !== 'ADMIN' && role !== 'EDITOR')) {
+     (role !== UserRole.ADMIN && role !== UserRole.EDITOR)) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
