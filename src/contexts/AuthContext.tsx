@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { User as SupabaseUser, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
 import { User as DatabaseUser, UserWithOrg, UserRole } from '@/lib/auth/roleUtils';
 
@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         // Lyssna på autentiseringsförändringar
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          (event, newSession) => {
+          (event: AuthChangeEvent, newSession: Session | null) => {
             setSession(newSession);
             setUser(newSession?.user || null);
             setIsLoading(false);
