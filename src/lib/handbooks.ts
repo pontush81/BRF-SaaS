@@ -134,11 +134,15 @@ export async function createSection(handbookId: string, data: { title: string, s
       data.sortOrder = highestSortOrder ? highestSortOrder.sortOrder + 1 : 1;
     }
     
+    // Skapa ett nytt objekt med garanterade värden (sortOrder kan inte vara undefined här)
+    const sectionData = {
+      title: data.title,
+      sortOrder: data.sortOrder, // Nu är detta alltid ett nummer efter if-satsen ovan
+      handbookId
+    };
+    
     const section = await prisma.section.create({
-      data: {
-        ...data,
-        handbookId
-      }
+      data: sectionData
     });
     
     return section;
@@ -219,11 +223,16 @@ export async function createPage(sectionId: string, data: { title: string, conte
       data.sortOrder = highestSortOrder ? highestSortOrder.sortOrder + 1 : 1;
     }
     
+    // Skapa ett nytt objekt med garanterade värden (sortOrder kan inte vara undefined här)
+    const pageData = {
+      title: data.title,
+      content: data.content,
+      sortOrder: data.sortOrder, // Nu är detta alltid ett nummer efter if-satsen ovan
+      sectionId
+    };
+    
     const page = await prisma.page.create({
-      data: {
-        ...data,
-        sectionId
-      }
+      data: pageData
     });
     
     return page;
