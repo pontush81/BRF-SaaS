@@ -46,8 +46,8 @@ export default async function Dashboard() {
 
   // Hämta data beroende på tillhörighet
   let handbook = null;
-  let documents = [];
-  let properties = [];
+  let documents: Document[] = [];
+  let properties: any[] = [];
 
   if (organization) {
     // Hämta data om organisationen
