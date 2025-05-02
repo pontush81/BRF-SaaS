@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { createHandbook } from './handbooks';
+import { UserRole } from './auth/roleUtils';
 
 const prisma = new PrismaClient();
 
@@ -69,7 +70,7 @@ export async function getOrganizationById(id: string) {
  * Hämtar en organisation med dess slug
  * Cache:as för bättre prestanda
  */
-export const getOrganizationBySlug = cache(async (slug: string) => {
+export const getOrganizationBySlug = unstable_cache(async (slug: string) => {
   try {
     const organization = await prisma.organization.findUnique({
       where: { slug },
@@ -86,7 +87,7 @@ export const getOrganizationBySlug = cache(async (slug: string) => {
  * Hämtar en organisation med dess domain
  * Cache:as för bättre prestanda
  */
-export const getOrganizationByDomain = cache(async (domain: string) => {
+export const getOrganizationByDomain = unstable_cache(async (domain: string) => {
   try {
     const organization = await prisma.organization.findFirst({
       where: { domain },
@@ -236,7 +237,7 @@ export async function deleteOrganization(id: string) {
     // Uppdatera användare för att ta bort kopplingen till organisationen
     await prisma.user.updateMany({
       where: { organizationId: id },
-      data: { organizationId: null, role: 'USER' },
+      data: { organizationId: null, role: UserRole.MEMBER },
     });
     
     // Ta bort organisationen
