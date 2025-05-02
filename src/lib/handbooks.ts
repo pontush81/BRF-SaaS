@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { createHandbookTemplate } from './handbook-template';
-import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 
 const prisma = new PrismaClient();
 
@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
  * Hämtar en handbok för en specifik organisation
  * Cache:as för bättre prestanda vid serversiderendering
  */
-export const getHandbookByOrgId = cache(async (organizationId: string) => {
+export const getHandbookByOrgId = unstable_cache(async (organizationId: string) => {
   try {
     const handbook = await prisma.handbook.findFirst({
       where: { organizationId },
