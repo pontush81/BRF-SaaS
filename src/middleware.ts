@@ -2,122 +2,88 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-// Domäner som används för app-navigering
-const APP_DOMAINS = ['handbok.se', 'localhost:3000']; // Lägg till egna produktionsdomäner
-const MARKETING_DOMAINS = ['brf-saas.vercel.app']; // Lägg till marknadsföringsdomäner
+// Dessa sidor är alltid tillgängliga även om man inte är inloggad
+const publicPaths = [
+  '/',
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/api/auth/callback',
+  // Lägg till andra offentliga sidor här
+];
 
-// Helper-funktion för att kontrollera domäntyp
-function getDomainType(host: string) {
-  // Kontrollera om vi är på localhost
-  if (host.includes('localhost')) {
-    return { type: 'app', subdomain: 'localhost' };
-  }
-
-  const parts = host.split('.');
-  const isLocalNetwork = /^(192\.168|10\.|172\.16\.)/.test(host);
-  
-  // Hantera lokala nätverk
-  if (isLocalNetwork) {
-    return { type: 'app', subdomain: 'localhost' };
-  }
-
-  // Kontrollera om detta är en app-domän
-  for (const domain of APP_DOMAINS) {
-    if (host.endsWith(domain)) {
-      // Extrahera subdomain
-      const domainParts = domain.split('.');
-      const hostParts = host.split('.');
-      const subdomainParts = hostParts.slice(0, hostParts.length - domainParts.length);
-      
-      // Om vi har en subdomän, returnera den
-      if (subdomainParts.length > 0) {
-        return { type: 'app', subdomain: subdomainParts.join('.') };
-      }
-      
-      // Annars är det huvuddomänen utan subdomän
-      return { type: 'marketing', subdomain: null };
-    }
-  }
-
-  // Kontrollera marknadsföringsdomäner
-  for (const domain of MARKETING_DOMAINS) {
-    if (host === domain) {
-      return { type: 'marketing', subdomain: null };
-    }
-  }
-
-  // Default till marketing om vi inte kan identifiera
-  return { type: 'marketing', subdomain: null };
-}
-
-// Middleware function
-export async function middleware(request: NextRequest) {
+export async function middleware(req: NextRequest) {
   let response = NextResponse.next({
     request: {
-      headers: request.headers,
+      headers: req.headers,
     },
   });
 
-  // Kontrollera om vi är i en webbläsarmiljö
-  const isBrowser = typeof window !== 'undefined';
-  const url = new URL(request.url);
-  const hostname = request.headers.get('host') || '';
-  
-  // Analysera om vi är på en subdomän
-  const { type, subdomain } = getDomainType(hostname);
-
-  // Skapa en Supabase-klient för middleware
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    // Endast skapa supabase-klient om nödvändigt
-    if (supabaseUrl && supabaseAnonKey && type === 'app' && subdomain && subdomain !== 'www' && subdomain !== 'app' && subdomain !== 'localhost') {
-      const supabase = createServerClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        {
-          cookies: {
-            get(name: string) {
-              return request.cookies.get(name)?.value;
-            },
-            set(name: string, value: string, options: any) {
-              response.cookies.set({
-                name,
-                value,
-                ...options,
-              });
-            },
-            remove(name: string, options: any) {
-              response.cookies.set({
-                name,
-                value: '',
-                ...options,
-              });
-            },
-          },
-        }
-      );
-
-      // Hämta session från Supabase
-      const { data: { session } } = await supabase.auth.getSession();
-
-      // Exempel: Om vi är på en organisations-subdomän
-      if (subdomain) {
-        // Lägg till subdomain i headers för att kunna använda i applikationen
-        response.headers.set('x-subdomain', subdomain);
-        
-        // Lägg till i URL:ens searchParams så den är tillgänglig för getServerSideProps
-        url.searchParams.set('subdomain', subdomain);
-        
-        // Omdirigera till inloggning om användaren inte är inloggad och försöker nå skyddade sidor
-        if (url.pathname.startsWith('/dashboard') && !session) {
-          return NextResponse.redirect(new URL('/login', request.url));
-        }
-      }
+  // Skapa en Supabase-klient med cookies
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+        },
+        remove(name: string, options: any) {
+          response.cookies.delete({
+            name,
+            ...options,
+          });
+        },
+      },
     }
-  } catch (error) {
-    console.error('Middleware error:', error);
+  );
+
+  // Kontrollera om användaren är autentiserad
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // Få den nuvarande sökvägen
+  const { pathname } = req.nextUrl;
+
+  // Kontrollera om sökvägen är offentlig
+  const isPublicPath = publicPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+
+  // Kontrollera om det är en API-route
+  const isApiRoute = pathname.startsWith('/api/');
+
+  // Kontrollera om sökvägen är för statiska resurser
+  const isStaticResource = pathname.startsWith('/_next/') || 
+                           pathname.includes('.') ||
+                           pathname.startsWith('/favicon.ico');
+
+  // Om det är en statisk resurs, skippa autentiseringskontrollen
+  if (isStaticResource) {
+    return response;
+  }
+
+  // Om användaren inte är inloggad och försöker nå en skyddad sida
+  if (!session && !isPublicPath && !isApiRoute) {
+    // Omdirigera till inloggningssidan och spara den ursprungliga URL:en
+    const redirectUrl = new URL('/login', req.url);
+    redirectUrl.searchParams.set('redirectTo', pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Om användaren är inloggad och försöker nå inloggning/registrering
+  if (session && (pathname === '/login' || pathname === '/register')) {
+    // Omdirigera till dashboard
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   return response;
@@ -127,13 +93,10 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
+     * Matcha alla sökvägar utom för:
+     * - API-routes som börjar med /api/
+     * - Statiska filer som _next/static, favicon.ico, etc.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)).*)',
   ],
 };
