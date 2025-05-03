@@ -37,7 +37,13 @@ export default async function AdminDashboard() {
   const [userCount, subscriptionData, documentCount] = await Promise.all([
     // Antal användare i organisationen
     prisma.user.count({ 
-      where: { organizationId: organization.id } 
+      where: { 
+        organizations: {
+          some: {
+            organizationId: organization.id
+          }
+        }
+      } 
     }),
     // Prenumerationsinformation
     prisma.subscription.findUnique({
