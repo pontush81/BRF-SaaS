@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import SignOutButton from './auth/SignOutButton';
 import { UserRole } from '@/lib/auth/roleUtils';
+import OrganizationSwitcher from './OrganizationSwitcher';
 
 export default function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -112,6 +113,7 @@ export default function Navigation() {
               <div className="px-3 py-1 rounded-md bg-gray-100 animate-pulse w-20 h-8"></div>
             ) : user ? (
               <>
+                <OrganizationSwitcher />
                 <Link 
                   href="/profile" 
                   className="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium flex items-center"

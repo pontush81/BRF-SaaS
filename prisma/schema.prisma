@@ -16,13 +16,13 @@ datasource db {
 
 // Organisationsmodell för multi-tenant
 model Organization {
-  id            String         @id @default(uuid())
+  id            String              @id @default(uuid())
   name          String
-  slug          String         @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
-  domain        String?        @unique // För anpassad domän (frivillig)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  users         User[]
+  slug          String              @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
+  domain        String?             @unique // För anpassad domän (frivillig)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  users         UserOrganization[]
   handbook      Handbook?
   subscription  Subscription?
   properties    Property[]
@@ -31,17 +31,29 @@ model Organization {
   issues        Issue[]
 }
 
+// Relation mellan användare och organisationer
+model UserOrganization {
+  id             String       @id @default(uuid())
+  userId         String
+  organizationId String
+  role           UserRole     @default(MEMBER)
+  isDefault      Boolean      @default(false)  // Markerar om detta är användarens standardorganisation
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
 // Användarmodell
 model User {
-  id             String          @id @default(uuid())
-  email          String          @unique
+  id             String              @id @default(uuid())
+  email          String              @unique
   name           String?
-  role           UserRole        @default(MEMBER)
-  firebaseUid    String?         @unique
-  organizationId String?
-  organization   Organization?   @relation(fields: [organizationId], references: [id])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  firebaseUid    String?             @unique
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organizations  UserOrganization[]
   accounts       Account[]
   sessions       Session[]
 }

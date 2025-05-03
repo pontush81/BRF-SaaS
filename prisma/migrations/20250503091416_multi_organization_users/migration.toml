@@ -1,0 +1,8 @@
+# This file tracks properties of this Prisma migration.
+# Used for migration history and to track backfills.
+# Read more: https://pris.ly/d/migration-properties
+
+# Applied migrations are tracked in the database.
+# This is empty when generating the migration but will be filled when applied.
+migration_name = "20250503091416_multi_organization_users"
+is_push_enabled = false 

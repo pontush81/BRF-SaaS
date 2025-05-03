@@ -22,10 +22,21 @@ const AUTH_ROUTES = ['/dashboard', '/profile', '/join-organization', '/admin', '
 const ADMIN_ROUTES = ['/admin', '/admin/']
 const EDITOR_ROUTES = ['/editor', '/editor/']  
 const GUEST_ROUTES = ['/login', '/register', '/forgot-password']
+const SWITCH_ORG_ROUTE = '/switch-organization';
 
 // Get domain parameters from environment variables
 const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.se';
 const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'localhost:3000';
+
+// Interface för en organisation
+interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  role: UserRole;
+  isDefault: boolean;
+}
 
 export async function middleware(req: NextRequest) {
   // Create a response that can be modified later
@@ -43,33 +54,42 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getSession();
 
   // Get user from database if logged in
-  let role = UserRole.MEMBER; // Default: MEMBER
   let isLoggedIn = false;
-  let organizationId = null;
+  let organizations: Organization[] = [];
+  let currentOrganization: Organization | null = null;
+  let role = UserRole.MEMBER;
   
   if (session?.user?.email) {
     isLoggedIn = true;
     try {
-      // Use Fetch API with serverless function to get user role
-      // This is required because prisma can't be used directly in middleware
-      const userRes = await fetch(`${req.nextUrl.origin}/api/auth/current-user`, {
+      // Use Fetch API with serverless function to get user data and organizations
+      // We need to include any orgId from query params to ensure we get the correct current org
+      const url = new URL(req.nextUrl);
+      const orgId = url.searchParams.get('orgId');
+      
+      const userApiUrl = new URL(`/api/auth/current-user`, req.nextUrl.origin);
+      if (orgId) {
+        userApiUrl.searchParams.set('orgId', orgId);
+      }
+      
+      const userRes = await fetch(userApiUrl, {
         headers: { 
           'Content-Type': 'application/json',
-          // Send authentication for API route
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token || ''}`
         }
       });
       
       if (userRes.ok) {
         const userData = await userRes.json();
-        if (userData && userData.role) {
+        if (userData) {
+          organizations = userData.organizations || [];
+          currentOrganization = userData.currentOrganization || null;
           role = userData.role as UserRole;
-          organizationId = userData.organizationId;
         }
       }
     } catch (error) {
-      console.error('Error fetching user role:', error);
-      // On error, continue as regular member
+      console.error('Error fetching user data:', error);
+      // On error, continue with default values
     }
   }
 
@@ -98,6 +118,29 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
+  // Handle organization switching (from anywhere)
+  if (pathname === SWITCH_ORG_ROUTE) {
+    const url = new URL(req.nextUrl);
+    const targetOrgId = url.searchParams.get('orgId');
+    const redirectPath = url.searchParams.get('redirect') || '/dashboard';
+    
+    if (isLoggedIn && targetOrgId) {
+      // Find the organization with the given ID
+      const targetOrg = organizations.find(org => org.id === targetOrgId);
+      
+      if (targetOrg) {
+        // Redirect to the target organization's subdomain
+        const protocol = req.nextUrl.protocol;
+        const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
+        const targetSubdomain = `${targetOrg.slug}.${APP_DOMAIN}${port}`;
+        return NextResponse.redirect(new URL(`${protocol}//${targetSubdomain}${redirectPath}`));
+      }
+    }
+    
+    // If organization not found or user not logged in, redirect to dashboard
+    return NextResponse.redirect(new URL('/dashboard', req.url));
+  }
+
   // SUBDOMAIN ROUTING LOGIC
   if (isSubdomain && subdomain) {
     // If on a subdomain, we should serve the BRF content, not marketing content
@@ -112,31 +155,35 @@ export async function middleware(req: NextRequest) {
       redirectUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(redirectUrl);
     }
+    
+    // If user is logged in but doesn't have access to this specific organization
+    if (isLoggedIn && organizations.length > 0) {
+      const hasAccessToThisOrg = organizations.some(org => org.slug === subdomain);
+      
+      if (!hasAccessToThisOrg) {
+        // Redirect to their default organization instead
+        const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
+        if (defaultOrg && defaultOrg.slug) {
+          const protocol = req.nextUrl.protocol;
+          const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
+          const defaultSubdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
+          return NextResponse.redirect(new URL(`${protocol}//${defaultSubdomain}/dashboard`));
+        }
+      }
+    }
   } 
   // MARKETING SITE ROUTING LOGIC
   else {
-    // On marketing site, redirect logged-in users with organization to their BRF subdomain
-    if (isLoggedIn && organizationId && pathname === '/dashboard') {
-      try {
-        const orgRes = await fetch(`${req.nextUrl.origin}/api/organizations/${organizationId}`, {
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || ''}`
-          }
-        });
-        
-        if (orgRes.ok) {
-          const orgData = await orgRes.json();
-          if (orgData && orgData.slug) {
-            // Construct the subdomain URL
-            const protocol = req.nextUrl.protocol;
-            const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
-            const subdomain = `${orgData.slug}.${APP_DOMAIN}${port}`;
-            return NextResponse.redirect(new URL(`${protocol}//${subdomain}/dashboard`));
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching organization:', error);
+    // On marketing site, redirect logged-in users with organizations to their default BRF subdomain
+    if (isLoggedIn && organizations.length > 0 && pathname === '/dashboard') {
+      const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
+      
+      if (defaultOrg && defaultOrg.slug) {
+        // Construct the subdomain URL
+        const protocol = req.nextUrl.protocol;
+        const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
+        const subdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
+        return NextResponse.redirect(new URL(`${protocol}//${subdomain}/dashboard`));
       }
     }
 
@@ -152,7 +199,7 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
 
-    // Check role-based access on marketing site
+    // Check role-based access on marketing site or subdomain
     if (ADMIN_ROUTES.some(route => pathname.startsWith(route)) && role !== UserRole.ADMIN) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
