@@ -34,10 +34,14 @@ export async function POST(request: NextRequest) {
       // Kontrollera om användaren är admin
       const adminUser = await prisma.user.findUnique({
         where: { email: session.user.email },
-        select: { role: true }
+        include: {
+          organizations: {
+            where: { role: UserRole.ADMIN }
+          }
+        }
       });
       
-      if (!adminUser || adminUser.role !== UserRole.ADMIN) {
+      if (!adminUser || adminUser.organizations.length === 0) {
         return NextResponse.json(
           { error: 'Du har inte behörighet att ansluta andra användare' }, 
           { status: 403 }
@@ -63,19 +67,25 @@ export async function POST(request: NextRequest) {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        organizationId: organization.id,
-        role: UserRole.MEMBER, // Standardroll är medlem
+        organizations: {
+          create: {
+            organizationId: organization.id,
+            role: UserRole.MEMBER, // Standardroll är medlem
+            isDefault: true // Sätt som standard om det är användarens första organisation
+          }
+        }
       },
       include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-      },
+        organizations: {
+          where: { organizationId: organization.id },
+          include: {
+            organization: true
+          }
+        }
+      }
     });
+    
+    const userOrganization = updatedUser.organizations[0];
     
     return NextResponse.json({
       success: true,
@@ -84,8 +94,8 @@ export async function POST(request: NextRequest) {
         id: updatedUser.id,
         email: updatedUser.email,
         name: updatedUser.name,
-        role: updatedUser.role,
-        organization: updatedUser.organization,
+        role: userOrganization?.role || UserRole.MEMBER,
+        organization: userOrganization?.organization,
       },
     });
     
