@@ -14,6 +14,13 @@ const PUBLIC_MARKETING_PATHS = [
   '/pricing',
   '/features',
   '/faq',
+  '/legal',
+  '/legal/terms',
+  '/legal/privacy',
+  '/legal/cookies',
+  '/legal/service-agreement',
+  '/legal/disclaimer',
+  '/legal/contact',
   // Add other public marketing pages here
 ];
 
@@ -25,8 +32,22 @@ const GUEST_ROUTES = ['/login', '/register', '/forgot-password']
 const SWITCH_ORG_ROUTE = '/switch-organization';
 
 // Get domain parameters from environment variables
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.se';
-const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'localhost:3000';
+const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
+const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org';
+
+// Helper function to check if a path is public
+function isPublicPath(path: string): boolean {
+  // Exact matches
+  if (PUBLIC_MARKETING_PATHS.includes(path)) {
+    return true;
+  }
+  
+  // Check if path starts with any of the public paths that represent sections
+  // like /legal/privacy should match if /legal is public
+  return PUBLIC_MARKETING_PATHS.some(publicPath => 
+    publicPath !== '/' && path.startsWith(publicPath + '/')
+  );
+}
 
 // Interface för en organisation
 interface Organization {
@@ -45,6 +66,39 @@ export async function middleware(req: NextRequest) {
       headers: req.headers,
     },
   });
+  
+  // Get hostname and pathname
+  const { pathname, hostname } = req.nextUrl;
+  
+  // Check if this is a subdomain request (e.g. someorg.handbok.org)
+  const isSubdomain = hostname !== MARKETING_DOMAIN && 
+                      hostname !== APP_DOMAIN && 
+                      (hostname.endsWith(`.${APP_DOMAIN}`) || hostname.includes(`.${APP_DOMAIN}:`));
+  
+  // Extract subdomain from hostname if present
+  const subdomain = isSubdomain 
+    ? hostname.replace(`.${APP_DOMAIN}`, '').replace(`:3000`, '') 
+    : null;
+    
+  // Check if this is a static resource or API route
+  const isStaticResource = pathname.startsWith('/_next/') || 
+                          pathname.includes('.') ||
+                          pathname.startsWith('/favicon.ico');
+  
+  const isApiRoute = pathname.startsWith('/api');
+
+  // Skip middleware for static resources or API routes
+  if (isStaticResource || isApiRoute) {
+    return response;
+  }
+  
+  // Check if the current path is public on marketing site
+  const isPublicMarketingPath = isPublicPath(pathname);
+  
+  // Allow access to public marketing pages without authentication
+  if (!isSubdomain && isPublicMarketingPath) {
+    return response;
+  }
   
   // Create a Supabase client to check if the user is logged in
   const supabase = createServerClient();
@@ -91,31 +145,6 @@ export async function middleware(req: NextRequest) {
       console.error('Error fetching user data:', error);
       // On error, continue with default values
     }
-  }
-
-  // Get hostname and pathname
-  const { pathname, hostname } = req.nextUrl;
-  
-  // Check if this is a subdomain request (e.g. someorg.handbok.se)
-  const isSubdomain = hostname !== MARKETING_DOMAIN && 
-                      hostname !== APP_DOMAIN && 
-                      (hostname.endsWith(`.${APP_DOMAIN}`) || hostname.includes(`.${APP_DOMAIN}:`));
-  
-  // Extract subdomain from hostname if present
-  const subdomain = isSubdomain 
-    ? hostname.replace(`.${APP_DOMAIN}`, '').replace(`:3000`, '') 
-    : null;
-
-  // Check if this is a static resource or API route
-  const isStaticResource = pathname.startsWith('/_next/') || 
-                          pathname.includes('.') ||
-                          pathname.startsWith('/favicon.ico');
-  
-  const isApiRoute = pathname.startsWith('/api');
-
-  // Skip authentication check for static resources or API routes
-  if (isStaticResource || isApiRoute) {
-    return response;
   }
 
   // Handle organization switching (from anywhere)
