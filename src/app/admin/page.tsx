@@ -61,8 +61,14 @@ export default async function AdminDashboard() {
       
       {/* Organisation Info */}
       <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
-        <h2 className="text-xl font-semibold mb-2">Organisation: {organization.name}</h2>
-        <p className="text-gray-600 mb-4">Subdomän: {organization.slug}.handbok.se</p>
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Din organisation</h2>
+        <p className="text-gray-600 mb-2">Namn: {organization.name}</p>
+        <p className="text-gray-600 mb-4">Subdomän: {organization.slug}.handbok.org</p>
+        <div className="flex space-x-4 mb-8">
+          <Link href={`https://${organization.slug}.handbok.org`} className="text-blue-600 hover:underline">
+            Besök er handbok
+          </Link>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-blue-50 p-4 rounded">
@@ -121,7 +127,7 @@ export default async function AdminDashboard() {
           <Link href="/dashboard" className="text-blue-600 hover:underline">
             Gå till dashboard
           </Link>
-          <Link href={`https://${organization.slug}.handbok.se`} className="text-blue-600 hover:underline">
+          <Link href={`https://${organization.slug}.handbok.org`} className="text-blue-600 hover:underline">
             Visa offentlig portal
           </Link>
         </div>

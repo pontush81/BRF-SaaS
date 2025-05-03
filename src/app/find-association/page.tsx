@@ -9,6 +9,7 @@ interface Organization {
   name: string;
   slug: string;
   createdAt: string;
+  description?: string;
 }
 
 export default function FindAssociationPage() {
@@ -117,7 +118,8 @@ export default function FindAssociationPage() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div>
                       <h4 className="font-medium">{association.name}</h4>
-                      <p className="text-sm text-gray-500">Webbadress: {association.slug}.handbok.se</p>
+                      <p className="text-sm text-gray-500">{association.description || 'Ingen beskrivning tillgänglig'}</p>
+                      <p className="text-sm text-gray-500">Webbadress: {association.slug}.handbok.org</p>
                     </div>
                     <button
                       onClick={() => goToAssociation(association.slug)}
