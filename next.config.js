@@ -29,7 +29,7 @@ const nextConfig = {
           has: [
             {
               type: 'host',
-              value: '(?<subdomain>.*)\\.handbok\\.se',
+              value: '(?<subdomain>.*)\\.handbok\\.org',
             },
           ],
           destination: '/:subdomain/:path*',
