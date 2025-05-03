@@ -38,17 +38,6 @@
       ],
       "destination": "https://www.handbok.org/$1",
       "permanent": true
-    },
-    {
-      "source": "/(.*)",
-      "has": [
-        {
-          "type": "host",
-          "value": "stage.handbok.org"
-        }
-      ],
-      "destination": "https://www.stage.handbok.org/$1",
-      "permanent": true
     }
   ],
   "trailingSlash": false
