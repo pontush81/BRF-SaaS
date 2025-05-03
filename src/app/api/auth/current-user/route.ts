@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
       email: dbUser.email,
       name: dbUser.name,
       role: dbUser.role as UserRole,
+      organizationId: dbUser.organizationId,
       organization: dbUser.organization || null,
       // Inkludera inte känsliga fält som password
     });
