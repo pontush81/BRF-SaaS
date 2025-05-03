@@ -236,3 +236,39 @@ npm run test -- -t "filnamn"
 # Kör tester med watch-läge
 npm run test:watch
 ```
+
+## Email Confirmation Links
+
+When a user registers, Supabase sends a confirmation email with a link back to your application. By default, these links use the Supabase Site URL configuration which must be updated for each environment.
+
+### Fix Email Confirmation Links
+
+The confirmation emails currently have links pointing to `localhost:3000` instead of your production domain. To fix this, run the script:
+
+```bash
+# For production
+npm run update-site-url:prod
+
+# For staging 
+npm run update-site-url:staging
+
+# For development
+npm run update-site-url:dev
+```
+
+This will display instructions for configuring Supabase properly:
+
+1. Login to [Supabase Dashboard](https://app.supabase.com)
+2. Select your project
+3. Go to Authentication -> URL Configuration
+4. Update the "Site URL" field to match your environment URL:
+   - Production: `https://www.handbok.org`
+   - Staging: Your staging URL
+   - Development: `http://localhost:3000`
+5. Click "Save" to apply changes
+
+After updating, your email confirmation links will point to the correct domain instead of localhost.
+
+### Troubleshooting Email Confirmations
+
+If users report confirmation emails with incorrect links (e.g., pointing to `localhost:3000`), follow the steps above to fix the issue in the Supabase Dashboard.

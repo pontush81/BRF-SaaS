@@ -17,7 +17,10 @@
     "copy-prod-to-test": "ts-node src/scripts/copy-production-data.ts test",
     "copy-prod-to-staging": "ts-node src/scripts/copy-production-data.ts staging",
     "build:staging": "NODE_ENV=staging prisma generate && next build",
-    "start:staging": "NODE_ENV=staging next start"
+    "start:staging": "NODE_ENV=staging next start",
+    "update-site-url:dev": "NODE_ENV=development node scripts/update_supabase_site_url.js",
+    "update-site-url:staging": "NODE_ENV=staging node scripts/update_supabase_site_url.js",
+    "update-site-url:prod": "NODE_ENV=production node scripts/update_supabase_site_url.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -30,6 +33,7 @@
     "@supabase/supabase-js": "^2.49.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^16.3.1",
     "firebase": "^11.6.1",
     "lucide-react": "^0.506.0",
     "next": "14.2.28",
