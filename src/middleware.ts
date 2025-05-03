@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { UserRole } from '@/lib/auth/roleUtils';
-import { getEnvironment, Environment, getAppDomain } from '@/lib/env';
 
 // Marketing site public paths
 const PUBLIC_MARKETING_PATHS = [
@@ -46,7 +45,7 @@ function isPublicPath(path: string): boolean {
   );
 }
 
-// Helper to check if a path is a static asset
+// Helper to check if a path is a static asset - ALWAYS ALLOW THESE
 function isStaticAsset(path: string): boolean {
   return (
     path.startsWith('/_next/') ||
@@ -54,32 +53,6 @@ function isStaticAsset(path: string): boolean {
     path.includes('.') ||
     path === '/favicon.ico'
   );
-}
-
-// Helper to get the correct app domain based on environment
-function getConfiguredAppDomain(): string {
-  const env = getEnvironment();
-  
-  // För att säkerställa att vi använder rätt domän i olika miljöer
-  if (env === Environment.DEVELOPMENT || env === Environment.TEST) {
-    return 'localhost';
-  }
-  
-  // Använd miljövariabeln eller fallback till handbok.org
-  return process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
-}
-
-// Helper to get the correct marketing domain based on environment
-function getConfiguredMarketingDomain(): string {
-  const env = getEnvironment();
-  
-  // För att säkerställa att vi använder rätt domän i olika miljöer
-  if (env === Environment.DEVELOPMENT || env === Environment.TEST) {
-    return 'localhost';
-  }
-  
-  // Använd miljövariabeln eller fallback
-  return process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org';
 }
 
 // Interface för en organisation
@@ -93,31 +66,24 @@ interface Organization {
 }
 
 export async function middleware(req: NextRequest) {
-  console.log(`[Middleware] Processing request for: ${req.nextUrl.pathname}`);
-  console.log(`[Middleware] Host: ${req.nextUrl.hostname}`);
-  
   // Get hostname and pathname
   const { pathname, hostname } = req.nextUrl;
   
   // ALWAYS ALLOW STATIC ASSETS - these should bypass all middleware logic
   if (isStaticAsset(pathname)) {
-    console.log(`[Middleware] Allowing static asset: ${pathname}`);
     return NextResponse.next();
   }
   
-  // Check if this is an API route
+  // Check if this is an API route - ALWAYS ALLOW THESE
   const isApiRoute = pathname.startsWith('/api');
   if (isApiRoute) {
-    console.log(`[Middleware] Allowing API route: ${pathname}`);
     return NextResponse.next();
   }
   
-  // Get configured domains based on environment
-  const APP_DOMAIN = getConfiguredAppDomain();
-  const MARKETING_DOMAIN = getConfiguredMarketingDomain();
-  
-  console.log(`[Middleware] APP_DOMAIN: ${APP_DOMAIN}`);
-  console.log(`[Middleware] MARKETING_DOMAIN: ${MARKETING_DOMAIN}`);
+  // SIMPLIFIED AND ROBUST DOMAIN DETECTION
+  // Get APP_DOMAIN and MARKETING_DOMAIN from environment or use sensible defaults
+  const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
+  const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org';
   
   // Create a response that can be modified later
   let response = NextResponse.next({
@@ -126,29 +92,36 @@ export async function middleware(req: NextRequest) {
     },
   });
   
-  // Check if this is a subdomain request (e.g. someorg.handbok.org)
-  // Vi behöver hantera både produktion och lokala utvecklingsinställningar
-  const isSubdomain = hostname !== MARKETING_DOMAIN && 
+  // Check if this is a subdomain request - handle both production and development
+  const isLocalhost = hostname === 'localhost' || hostname.includes('.localhost');
+  
+  // First check if this is localhost (for development)
+  // Then check if it's a subdomain of our app domain
+  const isSubdomain = !isLocalhost && 
+                      hostname !== MARKETING_DOMAIN && 
                       hostname !== APP_DOMAIN && 
-                      (hostname.endsWith(`.${APP_DOMAIN}`) || 
-                       hostname.includes(`.${APP_DOMAIN}:`) ||
-                       // Hantera lokala utvecklings-subdomäner som my-org.localhost
-                       hostname.includes(`.localhost`));
+                      (hostname.endsWith(`.${APP_DOMAIN}`) || hostname.includes(`.${APP_DOMAIN}:`));
   
   // Extract subdomain from hostname if present
   const subdomain = isSubdomain 
-    ? hostname.replace(`.${APP_DOMAIN}`, '').replace(`.localhost`, '').replace(`:3000`, '') 
+    ? hostname.replace(`.${APP_DOMAIN}`, '').replace(`:3000`, '') 
     : null;
   
-  console.log(`[Middleware] isSubdomain: ${isSubdomain ? 'true' : 'false'}`);
-  console.log(`[Middleware] subdomain: ${subdomain || 'none'}`);
+  // Special handling for local development
+  // If we're on localhost and not accessing a static resource,
+  // we'll simulate a marketing site experience
+  if (isLocalhost) {
+    // Always allow public paths on localhost
+    if (isPublicPath(pathname)) {
+      return response;
+    }
+  }
   
   // Check if the current path is public on marketing site
   const isPublicMarketingPath = isPublicPath(pathname);
   
   // Allow access to public marketing pages without authentication
   if (!isSubdomain && isPublicMarketingPath) {
-    console.log(`[Middleware] Allowing public marketing path: ${pathname}`);
     return response;
   }
   
@@ -167,7 +140,6 @@ export async function middleware(req: NextRequest) {
   
   if (session?.user?.email) {
     isLoggedIn = true;
-    console.log(`[Middleware] User is logged in: ${session.user.email}`);
     
     try {
       // Use Fetch API with serverless function to get user data and organizations
@@ -193,12 +165,10 @@ export async function middleware(req: NextRequest) {
           organizations = userData.organizations || [];
           currentOrganization = userData.currentOrganization || null;
           role = userData.role as UserRole;
-          console.log(`[Middleware] User role: ${role}`);
-          console.log(`[Middleware] Organizations: ${organizations.length}`);
         }
       }
     } catch (error) {
-      console.error('[Middleware] Error fetching user data:', error);
+      console.error('Error fetching user data:', error);
       // On error, continue with default values
     }
   }
@@ -218,30 +188,24 @@ export async function middleware(req: NextRequest) {
         const protocol = req.nextUrl.protocol;
         const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
         const targetSubdomain = `${targetOrg.slug}.${APP_DOMAIN}${port}`;
-        console.log(`[Middleware] Redirecting to organization: ${targetSubdomain}${redirectPath}`);
         return NextResponse.redirect(new URL(`${protocol}//${targetSubdomain}${redirectPath}`));
       }
     }
     
     // If organization not found or user not logged in, redirect to dashboard
-    console.log(`[Middleware] Redirecting to dashboard from switch-org`);
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   // SUBDOMAIN ROUTING LOGIC
   if (isSubdomain && subdomain) {
-    console.log(`[Middleware] Handling subdomain request: ${subdomain}`);
-    
     // If on a subdomain, we should serve the BRF content, not marketing content
     // Redirect root path on subdomain to the slug route
     if (pathname === '/') {
-      console.log(`[Middleware] Rewriting subdomain root to /${subdomain}`);
       return NextResponse.rewrite(new URL(`/${subdomain}`, req.url));
     }
     
     // Handle authentication for BRF members
     if (!isLoggedIn && !pathname.startsWith('/login') && !pathname.startsWith('/register')) {
-      console.log(`[Middleware] Redirecting to login: Not logged in on subdomain`);
       const redirectUrl = new URL('/login', req.url);
       redirectUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(redirectUrl);
@@ -252,14 +216,12 @@ export async function middleware(req: NextRequest) {
       const hasAccessToThisOrg = organizations.some(org => org.slug === subdomain);
       
       if (!hasAccessToThisOrg) {
-        console.log(`[Middleware] User doesn't have access to this organization: ${subdomain}`);
         // Redirect to their default organization instead
         const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
         if (defaultOrg && defaultOrg.slug) {
           const protocol = req.nextUrl.protocol;
           const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
           const defaultSubdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
-          console.log(`[Middleware] Redirecting to default organization: ${defaultSubdomain}`);
           return NextResponse.redirect(new URL(`${protocol}//${defaultSubdomain}/dashboard`));
         }
       }
@@ -267,8 +229,6 @@ export async function middleware(req: NextRequest) {
   } 
   // MARKETING SITE ROUTING LOGIC
   else {
-    console.log(`[Middleware] Handling marketing site request`);
-    
     // On marketing site, redirect logged-in users with organizations to their default BRF subdomain
     if (isLoggedIn && organizations.length > 0 && pathname === '/dashboard') {
       const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
@@ -278,14 +238,12 @@ export async function middleware(req: NextRequest) {
         const protocol = req.nextUrl.protocol;
         const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
         const subdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
-        console.log(`[Middleware] Redirecting to organization dashboard: ${subdomain}`);
         return NextResponse.redirect(new URL(`${protocol}//${subdomain}/dashboard`));
       }
     }
 
     // If not logged in and trying to access a protected route on marketing site
     if (!isLoggedIn && AUTH_ROUTES.some(route => pathname.startsWith(route))) {
-      console.log(`[Middleware] Redirecting to login: Not logged in trying to access protected route`);
       const redirectUrl = new URL('/login', req.url);
       redirectUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(redirectUrl);
@@ -293,24 +251,20 @@ export async function middleware(req: NextRequest) {
 
     // If logged in and trying to access a guest route on marketing site
     if (isLoggedIn && GUEST_ROUTES.some(route => pathname.startsWith(route))) {
-      console.log(`[Middleware] Redirecting to dashboard: Logged in trying to access guest route`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
 
     // Check role-based access on marketing site or subdomain
     if (ADMIN_ROUTES.some(route => pathname.startsWith(route)) && role !== UserRole.ADMIN) {
-      console.log(`[Middleware] Redirecting to dashboard: Not admin trying to access admin route`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
     
     if (EDITOR_ROUTES.some(route => pathname.startsWith(route)) && 
       (role !== UserRole.ADMIN && role !== UserRole.EDITOR)) {
-      console.log(`[Middleware] Redirecting to dashboard: Not editor trying to access editor route`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
   }
 
-  console.log(`[Middleware] Proceeding with request: ${pathname}`);
   return response;
 }
 
@@ -322,8 +276,7 @@ export const config = {
      * - API routes that start with /api/
      * - Static files like _next/static, favicon.ico, etc.
      * 
-     * Notera: Vi matchar fortfarande /_next/data för server-komponenter men de kommer att 
-     * tillåtas av isStaticAsset-kontroll inuti middleware-funktionen
+     * Men vi dubbelkollar statiska resurser i middleware ändå för säkerhets skull
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)).*)',
   ],
