@@ -75,11 +75,17 @@ export const userRepository = {
    * Hämtar en användare med organisationer filtrerade efter roll
    */
   async getUserWithRoleInOrganizations(email: string, role: UserRole): Promise<UserWithOrganizations | null> {
+    // Get prisma enum value directly from our enum
+    let prismaRole;
+    if (role === UserRole.ADMIN) prismaRole = 'ADMIN';
+    else if (role === UserRole.EDITOR) prismaRole = 'EDITOR';
+    else prismaRole = 'MEMBER';
+    
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
         organizations: {
-          where: { role: role.toString() }, // Convert enum to string
+          where: { role: prismaRole },
           include: {
             organization: true
           }
@@ -100,6 +106,12 @@ export const userRepository = {
     role?: UserRole;
   }): Promise<UserWithOrganizations> {
     const { email, name, organizationId, role = UserRole.MEMBER } = userData;
+    
+    // Get prisma enum value directly from our enum
+    let prismaRole;
+    if (role === UserRole.ADMIN) prismaRole = 'ADMIN';
+    else if (role === UserRole.EDITOR) prismaRole = 'EDITOR';
+    else prismaRole = 'MEMBER';
 
     const user = await prisma.user.create({
       data: {
@@ -109,7 +121,7 @@ export const userRepository = {
           organizations: {
             create: {
               organizationId,
-              role: role.toString(), // Convert enum to string
+              role: prismaRole,
               isDefault: true
             }
           }
@@ -131,13 +143,19 @@ export const userRepository = {
    * Ansluter en användare till en organisation
    */
   async connectUserToOrganization(userId: string, organizationId: string, role: UserRole = UserRole.MEMBER, isDefault: boolean = false): Promise<UserWithOrganizations> {
+    // Get prisma enum value directly from our enum
+    let prismaRole;
+    if (role === UserRole.ADMIN) prismaRole = 'ADMIN';
+    else if (role === UserRole.EDITOR) prismaRole = 'EDITOR';
+    else prismaRole = 'MEMBER';
+    
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
         organizations: {
           create: {
             organizationId,
-            role: role.toString(), // Convert enum to string
+            role: prismaRole,
             isDefault
           }
         }
