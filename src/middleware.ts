@@ -73,6 +73,14 @@ function isMarketingSite(hostname: string, marketingDomains: string[]): boolean 
   return marketingDomains.some(domain => hostname === domain);
 }
 
+// Add debug function to log requests in development
+function logDebug(message: string, req: NextRequest): void {
+  // Only log in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[MIDDLEWARE] ${message} - ${req.method} ${req.nextUrl.pathname} (${req.nextUrl.hostname})`);
+  }
+}
+
 // Interface för en organisation
 interface Organization {
   id: string;
@@ -87,14 +95,24 @@ export async function middleware(req: NextRequest) {
   // Get hostname and pathname
   const { pathname, hostname } = req.nextUrl;
   
+  // Log request details at the beginning for debugging
+  const isDev = process.env.NODE_ENV === 'development';
+  const reqId = Math.random().toString(36).substr(2, 9);
+  
+  if (isDev) {
+    console.log(`[${reqId}] Request: ${hostname}${pathname}`);
+  }
+  
   // ALWAYS ALLOW STATIC ASSETS - these should bypass all middleware logic
   if (isStaticAsset(pathname)) {
+    if (isDev) console.log(`[${reqId}] Static asset: ${pathname} - allowed`);
     return NextResponse.next();
   }
   
   // Check if this is an API route - ALWAYS ALLOW THESE
   const isApiRoute = pathname.startsWith('/api');
   if (isApiRoute) {
+    if (isDev) console.log(`[${reqId}] API route: ${pathname} - allowed`);
     return NextResponse.next();
   }
   
@@ -103,8 +121,14 @@ export async function middleware(req: NextRequest) {
   const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
   const MARKETING_DOMAINS = [
     process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org',
-    'www.stage.handbok.org' // Add stage domain explicitly
+    'www.stage.handbok.org', // Add stage domain explicitly
+    'www.handbok.com' // Add .com domain
   ];
+
+  if (isDev) {
+    console.log(`[${reqId}] ENV: APP_DOMAIN=${APP_DOMAIN}, MARKETING_DOMAINS=${MARKETING_DOMAINS.join(',')}`);
+    console.log(`[${reqId}] Current hostname: ${hostname}`);
+  }
   
   // Create a response that can be modified later
   let response = NextResponse.next({
@@ -131,12 +155,20 @@ export async function middleware(req: NextRequest) {
     ? hostname.replace(`.${APP_DOMAIN}`, '').replace(`:3000`, '') 
     : null;
   
+  if (isDev) {
+    console.log(`[${reqId}] isLocalhost: ${isLocalhost}`);
+    console.log(`[${reqId}] isMarketingDomain: ${isMarketingDomain}`);
+    console.log(`[${reqId}] isSubdomain: ${isSubdomain}`);
+    console.log(`[${reqId}] subdomain: ${subdomain}`);
+  }
+  
   // Special handling for local development
   // If we're on localhost and not accessing a static resource,
   // we'll simulate a marketing site experience
   if (isLocalhost) {
     // Always allow public paths on localhost
     if (isPublicPath(pathname)) {
+      if (isDev) console.log(`[${reqId}] Public path on localhost: ${pathname} - allowed`);
       return response;
     }
   }
@@ -146,6 +178,7 @@ export async function middleware(req: NextRequest) {
   
   // Allow access to public marketing pages without authentication on marketing domains
   if (isMarketingDomain && isPublicMarketingPath) {
+    if (isDev) console.log(`[${reqId}] Public marketing path: ${pathname} - allowed`);
     return response;
   }
   
@@ -197,6 +230,11 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  if (isDev) {
+    console.log(`[${reqId}] isLoggedIn: ${isLoggedIn}`);
+    console.log(`[${reqId}] organizations: ${organizations.length}`);
+  }
+
   // Handle organization switching (from anywhere)
   if (pathname === SWITCH_ORG_ROUTE) {
     const url = new URL(req.nextUrl);
@@ -212,19 +250,23 @@ export async function middleware(req: NextRequest) {
         const protocol = req.nextUrl.protocol;
         const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
         const targetSubdomain = `${targetOrg.slug}.${APP_DOMAIN}${port}`;
+        if (isDev) console.log(`[${reqId}] Switching org: redirecting to ${targetSubdomain}${redirectPath}`);
         return NextResponse.redirect(new URL(`${protocol}//${targetSubdomain}${redirectPath}`));
       }
     }
     
     // If organization not found or user not logged in, redirect to dashboard
+    if (isDev) console.log(`[${reqId}] Switching org: fallback to dashboard`);
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   // SUBDOMAIN ROUTING LOGIC
   if (isSubdomain && subdomain) {
+    if (isDev) console.log(`[${reqId}] Handling subdomain request: ${subdomain}`);
     // If on a subdomain, we should serve the BRF content, not marketing content
     // Redirect root path on subdomain to the slug route
     if (pathname === '/') {
+      if (isDev) console.log(`[${reqId}] Rewriting root path to /${subdomain}`);
       return NextResponse.rewrite(new URL(`/${subdomain}`, req.url));
     }
     
@@ -232,6 +274,7 @@ export async function middleware(req: NextRequest) {
     if (!isLoggedIn && !pathname.startsWith('/login') && !pathname.startsWith('/register')) {
       const redirectUrl = new URL('/login', req.url);
       redirectUrl.searchParams.set('redirect', pathname);
+      if (isDev) console.log(`[${reqId}] Not logged in: redirecting to login`);
       return NextResponse.redirect(redirectUrl);
     }
     
@@ -246,6 +289,7 @@ export async function middleware(req: NextRequest) {
           const protocol = req.nextUrl.protocol;
           const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
           const defaultSubdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
+          if (isDev) console.log(`[${reqId}] No access to this org: redirecting to ${defaultSubdomain}`);
           return NextResponse.redirect(new URL(`${protocol}//${defaultSubdomain}/dashboard`));
         }
       }
@@ -253,6 +297,7 @@ export async function middleware(req: NextRequest) {
   } 
   // MARKETING SITE ROUTING LOGIC
   else if (isMarketingDomain || hostname === APP_DOMAIN) {
+    if (isDev) console.log(`[${reqId}] Handling marketing site request`);
     // On marketing site, redirect logged-in users with organizations to their default BRF subdomain
     if (isLoggedIn && organizations.length > 0 && pathname === '/dashboard') {
       const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
@@ -262,6 +307,7 @@ export async function middleware(req: NextRequest) {
         const protocol = req.nextUrl.protocol;
         const port = hostname.includes(':') ? `:${hostname.split(':')[1]}` : '';
         const subdomain = `${defaultOrg.slug}.${APP_DOMAIN}${port}`;
+        if (isDev) console.log(`[${reqId}] Redirecting to default org: ${subdomain}`);
         return NextResponse.redirect(new URL(`${protocol}//${subdomain}/dashboard`));
       }
     }
@@ -270,25 +316,30 @@ export async function middleware(req: NextRequest) {
     if (!isLoggedIn && AUTH_ROUTES.some(route => pathname.startsWith(route))) {
       const redirectUrl = new URL('/login', req.url);
       redirectUrl.searchParams.set('redirect', pathname);
+      if (isDev) console.log(`[${reqId}] Not logged in: redirecting to login`);
       return NextResponse.redirect(redirectUrl);
     }
 
     // If logged in and trying to access a guest route on marketing site
     if (isLoggedIn && GUEST_ROUTES.some(route => pathname.startsWith(route))) {
+      if (isDev) console.log(`[${reqId}] Already logged in: redirecting to dashboard`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
 
     // Check role-based access on marketing site or subdomain
     if (ADMIN_ROUTES.some(route => pathname.startsWith(route)) && role !== UserRole.ADMIN) {
+      if (isDev) console.log(`[${reqId}] Not admin: redirecting to dashboard`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
     
     if (EDITOR_ROUTES.some(route => pathname.startsWith(route)) && 
       (role !== UserRole.ADMIN && role !== UserRole.EDITOR)) {
+      if (isDev) console.log(`[${reqId}] Not editor: redirecting to dashboard`);
       return NextResponse.redirect(new URL('/dashboard', req.url));
     }
   }
 
+  if (isDev) console.log(`[${reqId}] Final decision: allowing request`);
   return response;
 }
 
