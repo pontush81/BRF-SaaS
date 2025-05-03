@@ -1,0 +1,236 @@
+// This is your Prisma schema file for STAGING environment
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // Specify output för staging-klienten
+  output   = "../node_modules/@prisma/client/staging"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  // OBS: schema specificeras i DATABASE_URL och DIRECT_URL via '?schema=staging'
+}
+
+// Organisationsmodell för multi-tenant
+model Organization {
+  id            String              @id @default(uuid())
+  name          String
+  slug          String              @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
+  domain        String?             @unique // För anpassad domän (frivillig)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  users         UserOrganization[]
+  handbook      Handbook?
+  subscription  Subscription?
+  properties    Property[]
+  units         Unit[]
+  documents     Document[]
+  issues        Issue[]
+}
+
+// Relation mellan användare och organisationer
+model UserOrganization {
+  id             String       @id @default(uuid())
+  userId         String
+  organizationId String
+  role           UserRole     @default(MEMBER)
+  isDefault      Boolean      @default(false)  // Markerar om detta är användarens standardorganisation
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+// Användarmodell
+model User {
+  id             String              @id @default(uuid())
+  email          String              @unique
+  name           String?
+  firebaseUid    String?             @unique
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organizations  UserOrganization[]
+  accounts       Account[]
+  sessions       Session[]
+}
+
+// Handboksmodell - huvudsakligt innehåll
+model Handbook {
+  id              String       @id @default(uuid())
+  title           String
+  description     String?
+  organizationId  String       @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  sections        Section[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+// Sektioner i handboken
+model Section {
+  id          String    @id @default(uuid())
+  title       String
+  sortOrder   Int
+  handbookId  String
+  handbook    Handbook  @relation(fields: [handbookId], references: [id])
+  pages       Page[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Sidor i en sektion
+model Page {
+  id          String    @id @default(uuid())
+  title       String
+  content     String?   @db.Text
+  sortOrder   Int
+  sectionId   String
+  section     Section   @relation(fields: [sectionId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Prenumerationsmodell
+model Subscription {
+  id              String       @id @default(uuid())
+  planType        PlanType     @default(BASIC)
+  status          SubStatus    @default(ACTIVE)
+  startDate       DateTime     @default(now())
+  endDate         DateTime?
+  organizationId  String       @unique
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+// Fastighetsmodell
+model Property {
+  id             String       @id @default(uuid())
+  name           String
+  address        String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  units          Unit[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Lägenhetsmodell
+model Unit {
+  id             String       @id @default(uuid())
+  unitNumber     String       // Lägenhetsnummer
+  floor          Int?
+  size           Float?       // Bostadsyta i kvm
+  rooms          Int?
+  propertyId     String
+  property       Property     @relation(fields: [propertyId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Dokumentmodell
+model Document {
+  id             String       @id @default(uuid())
+  title          String
+  description    String?
+  fileUrl        String
+  fileType       String
+  fileSize       Int
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  category       DocCategory  @default(OTHER)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Ärendemodell
+model Issue {
+  id             String       @id @default(uuid())
+  title          String
+  description    String?
+  status         IssueStatus  @default(OPEN)
+  priority       IssuePriority @default(MEDIUM)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Kontohanterings-relaterade modeller
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Enumtyper
+enum UserRole {
+  ADMIN
+  EDITOR
+  MEMBER
+}
+
+enum PlanType {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum SubStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIAL
+}
+
+enum DocCategory {
+  FINANCIAL
+  PROTOCOL
+  TECHNICAL
+  RULES
+  OTHER
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}

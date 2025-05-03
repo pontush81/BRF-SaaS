@@ -5,17 +5,27 @@ import { PrismaClient } from '@prisma/client';
 
 // Deklarera global Prisma-instans
 declare global {
-  var prisma: PrismaClient | undefined;
+  var prisma: any;
 }
 
-// Förhindra flera instanser av Prisma Client i development
-const prisma =
-  global.prisma ||
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-  });
+// Bestäm miljö
+const environment = process.env.NODE_ENV || 'development';
 
-if (process.env.NODE_ENV !== 'production') {
+// Skapa rätt Prisma-klient baserat på miljö
+const createPrismaClient = () => {
+  // För alla miljöer använder vi samma klientklass men olika connection strings
+  // Connection string för staging inkluderar schema=staging
+  console.log(`Initializing Prisma client for environment: ${environment}`);
+  return new PrismaClient({
+    log: environment === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  });
+};
+
+// Förhindra flera instanser av Prisma Client
+const prisma = global.prisma || createPrismaClient();
+
+// Spara i globalvariabel i icke-produktionsmiljöer för att undvika flera instanser
+if (environment !== 'production') {
   global.prisma = prisma;
 }
 

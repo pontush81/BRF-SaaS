@@ -20,7 +20,11 @@
     "start:staging": "NODE_ENV=staging next start",
     "update-site-url:dev": "NODE_ENV=development node scripts/update_supabase_site_url.js",
     "update-site-url:staging": "NODE_ENV=staging node scripts/update_supabase_site_url.js",
-    "update-site-url:prod": "NODE_ENV=production node scripts/update_supabase_site_url.js"
+    "update-site-url:prod": "NODE_ENV=production node scripts/update_supabase_site_url.js",
+    "prisma:generate:staging": "NODE_ENV=staging prisma generate --schema=./prisma/schema.staging.prisma",
+    "prisma:migrate:staging": "NODE_ENV=staging prisma migrate deploy --schema=./prisma/schema.staging.prisma",
+    "prisma:db:push:staging": "NODE_ENV=staging prisma db push --schema=./prisma/schema.staging.prisma",
+    "prisma:studio:staging": "NODE_ENV=staging prisma studio --schema=./prisma/schema.staging.prisma"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
