@@ -13,6 +13,9 @@ export enum Environment {
   PRODUCTION = 'production',
 }
 
+// Definiera NodeEnv typ för att inkludera 'staging'
+type NodeEnv = 'development' | 'test' | 'staging' | 'production' | undefined;
+
 /**
  * Databasmiljöer som applikationen kan arbeta mot
  */
@@ -27,7 +30,8 @@ export enum DatabaseEnvironment {
  * Returnerar aktuell miljö baserat på NODE_ENV
  */
 export const getEnvironment = (): Environment => {
-  const env = process.env.NODE_ENV;
+  // Cast till vår egen NodeEnv typ för att undvika typfel
+  const env = process.env.NODE_ENV as NodeEnv;
 
   switch (env) {
     case 'development':
