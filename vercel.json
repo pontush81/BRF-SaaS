@@ -27,5 +27,51 @@
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "handbok.org"
+        }
+      ],
+      "destination": "https://www.handbok.org/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "handbok.org"
+        }
+      ],
+      "destination": "https://www.handbok.org",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "stage.handbok.org"
+        }
+      ],
+      "destination": "https://www.stage.handbok.org/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "stage.handbok.org"
+        }
+      ],
+      "destination": "https://www.stage.handbok.org",
+      "permanent": true
+    }
+  ],
   "trailingSlash": false
 } 
