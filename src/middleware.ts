@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { UserRole } from '@/lib/auth/roleUtils';
+import { isStaging } from '@/lib/env';
 
 // Marketing site public paths
 const PUBLIC_MARKETING_PATHS = [
@@ -25,8 +26,12 @@ const GUEST_ROUTES = ['/login', '/register', '/forgot-password']
 const SWITCH_ORG_ROUTE = '/switch-organization';
 
 // Get domain parameters from environment variables
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.se';
+const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
 const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'localhost:3000';
+
+// Stöd för stagingdomän
+const STAGING_DOMAIN = 'stage.handbok.org';
+const isInStagingEnv = isStaging();
 
 // Interface för en organisation
 interface Organization {
@@ -96,8 +101,14 @@ export async function middleware(req: NextRequest) {
   // Get hostname and pathname
   const { pathname, hostname } = req.nextUrl;
   
+  // Check if this is on STAGING_DOMAIN if in staging environment
+  const isStagingHost = isInStagingEnv && hostname === STAGING_DOMAIN;
+  
+  // In staging, treat STAGING_DOMAIN as marketing domain
+  const effectiveMarketingDomain = isStagingHost ? STAGING_DOMAIN : MARKETING_DOMAIN;
+  
   // Check if this is a subdomain request (e.g. someorg.handbok.se)
-  const isSubdomain = hostname !== MARKETING_DOMAIN && 
+  const isSubdomain = hostname !== effectiveMarketingDomain && 
                       hostname !== APP_DOMAIN && 
                       (hostname.endsWith(`.${APP_DOMAIN}`) || hostname.includes(`.${APP_DOMAIN}:`));
   

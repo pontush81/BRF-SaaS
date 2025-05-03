@@ -13,8 +13,8 @@ export enum Environment {
   PRODUCTION = 'production',
 }
 
-// Definiera NodeEnv typ för att inkludera 'staging'
-type NodeEnv = 'development' | 'test' | 'staging' | 'production' | undefined;
+// Standard NODE_ENV värden
+type NodeEnv = 'development' | 'test' | 'production' | undefined;
 
 /**
  * Databasmiljöer som applikationen kan arbeta mot
@@ -27,10 +27,16 @@ export enum DatabaseEnvironment {
 }
 
 /**
- * Returnerar aktuell miljö baserat på NODE_ENV
+ * Returnerar aktuell miljö baserat på NODE_ENV och DEPLOYMENT_ENV
  */
 export const getEnvironment = (): Environment => {
-  // Cast till vår egen NodeEnv typ för att undvika typfel
+  // Prioritera DEPLOYMENT_ENV om det finns (t.ex. för staging)
+  const deploymentEnv = process.env.DEPLOYMENT_ENV;
+  if (deploymentEnv === 'staging') {
+    return Environment.STAGING;
+  }
+
+  // Fallback till standard NODE_ENV
   const env = process.env.NODE_ENV as NodeEnv;
 
   switch (env) {
@@ -38,10 +44,9 @@ export const getEnvironment = (): Environment => {
       return Environment.DEVELOPMENT;
     case 'test':
       return Environment.TEST;
-    case 'staging':
-      return Environment.STAGING;
     case 'production':
-      return Environment.PRODUCTION;
+      // För produktion, verifiera att vi inte är i staging
+      return deploymentEnv === 'staging' ? Environment.STAGING : Environment.PRODUCTION;
     default:
       // Fallback till development om ingen miljö är specificerad
       return Environment.DEVELOPMENT;
@@ -53,7 +58,12 @@ export const getEnvironment = (): Environment => {
  * Detta gör det möjligt att ha separata databaser för olika miljöer
  */
 export const getDatabaseEnvironment = (): DatabaseEnvironment => {
-  // Kontrollera för Vercel-specifika miljövariabler först
+  // Prioritera DEPLOYMENT_ENV om det är "staging"
+  if (process.env.DEPLOYMENT_ENV === 'staging') {
+    return DatabaseEnvironment.STAGING;
+  }
+  
+  // Kontrollera för Vercel-specifika miljövariabler
   if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_ENV_PREVIEW_DATABASE_ENV) {
     return process.env.VERCEL_ENV_PREVIEW_DATABASE_ENV as unknown as DatabaseEnvironment;
   }
@@ -75,7 +85,10 @@ export const getDatabaseEnvironment = (): DatabaseEnvironment => {
       return DatabaseEnvironment.STAGING;
     case 'prod':
     case 'production':
-      return DatabaseEnvironment.PROD;
+      // För produktion, verifiera att vi inte är i staging
+      return process.env.DEPLOYMENT_ENV === 'staging' 
+        ? DatabaseEnvironment.STAGING 
+        : DatabaseEnvironment.PROD;
     default:
       // Fallback till dev om ingen miljö är specificerad
       return DatabaseEnvironment.DEV;
