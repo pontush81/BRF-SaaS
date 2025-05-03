@@ -5,12 +5,21 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import Navigation from '@/components/Navigation';
 import { isDevelopment, isTest, isStaging, isProductionDatabase, logEnvironmentInfo } from "@/lib/env";
 
-const inter = Inter({ subsets: ['latin'] });
+// Ladda Inter-typsnittet utan att använda font/google för bättre kompatibilitet
+const inter = Inter({ 
+  subsets: ['latin'],
+  display: 'swap',
+  preload: true,
+  variable: '--font-inter'
+});
 
 export const metadata: Metadata = {
   title: 'BRF-SaaS | Bostadsrättsföreningar som en tjänst',
   description: 'En SaaS-plattform för hantering av bostadsrättsföreningar',
   keywords: 'brf, bostadsrättsförening, saas, fastighetsförvaltning, multi-tenant',
+  icons: {
+    icon: '/favicon.ico',
+  }
 };
 
 export default function RootLayout({
@@ -25,6 +34,8 @@ export default function RootLayout({
     <html lang="sv">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <meta httpEquiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'self' 'unsafe-inline' 'unsafe-eval'; style-src * 'self' 'unsafe-inline'; img-src * data: blob: 'self'; font-src * data: 'self'; connect-src * 'self'; frame-src 'self';" />
       </head>
       <body className={inter.className}>
         {/* Visa varning i icke-produktionsmiljöer */}

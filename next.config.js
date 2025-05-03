@@ -10,7 +10,7 @@ const nextConfig = {
         hostname: 'placehold.co',
       },
     ],
-    unoptimized: process.env.NODE_ENV !== 'production',
+    unoptimized: true, // Alltid använd ooptimerade bilder för bättre kompatibilitet
   },
   // Explicitly add environment variables
   env: {
@@ -19,16 +19,16 @@ const nextConfig = {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
   // General configuration
-  reactStrictMode: true,
+  reactStrictMode: false, // Inaktivera strict mode för att minska problem
   swcMinify: true,
   // Optimize static files
   poweredByHeader: false,
   compress: true,
   
-  // Asset prefix för CDN
-  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://www.handbok.org' : undefined,
+  // VIKTIGT: Ta bort assetPrefix för att undvika problem med statiska filer
+  // assetPrefix: process.env.NODE_ENV === 'production' ? 'https://www.handbok.org' : undefined,
   
-  // Förbättrad CORS-hantering med crossOrigin-attribut på script och länkade resurser
+  // Förbättrad CORS-hantering
   crossOrigin: 'anonymous',
   
   // Enable handling of domains and subdomains
@@ -39,14 +39,12 @@ const nextConfig = {
         {
           source: '/_next/:path*',
           destination: '/_next/:path*',
-          has: [
-            {
-              type: 'host',
-              value: '(.*)',
-            },
-          ],
         },
-        
+        // Se till att favicon är tillgänglig
+        {
+          source: '/favicon.ico',
+          destination: '/favicon.ico',
+        },
         // Handle subdomain routing for BRF specific content
         {
           source: '/:path*',
@@ -66,20 +64,29 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/_next/static/(.*)',
+        source: '/(.*)',
         headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
           {
             key: 'Access-Control-Allow-Origin',
             value: '*',
           },
           {
             key: 'Access-Control-Allow-Methods',
-            value: 'GET, OPTIONS',
+            value: 'GET, POST, OPTIONS',
           },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization',
+          },
+        ],
+      },
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          }
         ],
       },
       {
@@ -88,15 +95,7 @@ const nextConfig = {
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
-          },
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, OPTIONS',
-          },
+          }
         ],
       },
       {
@@ -105,11 +104,7 @@ const nextConfig = {
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
-          },
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
+          }
         ],
       },
       {
@@ -118,11 +113,25 @@ const nextConfig = {
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
-          },
+          }
+        ],
+      },
+      {
+        source: '/(.*).css',
+        headers: [
           {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          }
+        ],
+      },
+      {
+        source: '/_next/static/media/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          }
         ],
       },
     ];
