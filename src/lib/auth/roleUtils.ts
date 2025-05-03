@@ -19,6 +19,9 @@ export interface User {
   organizationId: string | null;
 }
 
+// Re-export UserRole för bakåtkompatibilitet
+// export { UserRole }; // Borttaget för att undvika dubbel export
+
 export type UserWithOrg = User & {
   organization: {
     id: string;

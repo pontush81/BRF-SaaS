@@ -45,17 +45,20 @@ export default async function LoginPage({
           </p>
         </div>
         
-        <div className="mb-6 p-4 bg-blue-50 text-blue-700 rounded-md">
-          <p className="font-medium">Är du medlem i en förening?</p>
-          <p className="text-sm mt-1">
-            Medlemmar bör logga in direkt på sin förenings webbadress:<br />
-            <span className="font-semibold">dinförening.handbok.se</span>
-          </p>
-          <p className="text-sm mt-2">
-            <Link href="/find-association" className="text-blue-700 hover:underline font-medium">
-              Hitta din förenings webbplats här →
+        <div className="mt-8 text-center">
+          <p className="text-gray-600 mb-1">Är du medlem i en förening?</p>
+          <div className="flex justify-center gap-4 mt-2">
+            <p className="text-gray-600">
+              Du bör logga in direkt på din förenings webbadress 
+              <br />
+              <span className="font-mono text-sm">(dinförening.handbok.se)</span>
+            </p>
+          </div>
+          <div className="mt-4">
+            <Link href="/find-association" className="text-blue-600 hover:text-blue-800 font-medium">
+              Hitta din förening →
             </Link>
-          </p>
+          </div>
         </div>
         
         <SignInForm />

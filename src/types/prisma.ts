@@ -1,3 +1,4 @@
+import { Prisma, User as PrismaUser } from '@prisma/client';
 import { UserRole } from '@/lib/auth/roleUtils';
 
 // Representation av en användare med relaterade organisationer

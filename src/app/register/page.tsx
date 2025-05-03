@@ -74,6 +74,19 @@ export default async function Register({
                 </div>
               )}
             </div>
+            {registrationType === 'member' && !orgSlug && (
+              <div className="mb-6 p-4 bg-yellow-50 text-yellow-700 rounded">
+                <p className="font-medium">OBS! Du registrerar dig på huvudplattformen</p>
+                <p className="text-sm mt-1">
+                  Medlemmar bör registrera sig direkt på sin förenings webbplats, inte här på huvudplattformen.
+                </p>
+                <p className="text-sm mt-2">
+                  <Link href="/find-association" className="text-blue-600 hover:text-blue-800 font-medium">
+                    Hitta din förenings webbplats här →
+                  </Link>
+                </p>
+              </div>
+            )}
             <SignUpForm isAdmin={false} orgSlug={orgSlug as string} />
           </>
         )}

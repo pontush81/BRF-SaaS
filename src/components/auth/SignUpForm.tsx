@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '@/lib/auth/roleUtils';
+import Link from 'next/link';
 
 // Definiera konstanter för Supabase direkt i komponenten för att undvika problem med miljövariabler
 const SUPABASE_URL = 'https://lcckqvnwnrgvpnpavhyp.supabase.co';
@@ -324,6 +325,15 @@ export default function SignUpForm({ isAdmin = false, orgSlug = '' }: SignUpForm
         >
           {loading ? 'Registrerar...' : 'Registrera dig'}
         </button>
+        
+        {!isAdmin && !orgSlug && (
+          <div className="mt-6 text-center text-sm text-gray-600">
+            Letar du efter din förenings registreringssida?{' '}
+            <Link href="/find-association" className="text-blue-600 hover:underline">
+              Hitta din förening här
+            </Link>
+          </div>
+        )}
       </form>
     </div>
   );
