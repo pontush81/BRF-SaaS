@@ -38,6 +38,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Ej autentiserad' }, { status: 401 });
     }
     
+    // Kontrollera att email finns
+    if (!session.user.email) {
+      return NextResponse.json({ error: 'Ingen email tillgänglig för användaren' }, { status: 400 });
+    }
+    
     // Hämta användarinformation från databasen
     const dbUser = await prisma.user.findUnique({
       where: { email: session.user.email },
