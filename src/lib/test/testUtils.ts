@@ -184,6 +184,7 @@ export const mockOrganizations = [
   {
     id: 'test-org-1',
     name: 'TEST_Organization 1',
+    slug: 'test-org-1',
     organizationNumber: '123456-7890',
     address: 'Test Street 1',
     zipCode: '12345',
@@ -192,6 +193,7 @@ export const mockOrganizations = [
   {
     id: 'test-org-2',
     name: 'TEST_Organization 2',
+    slug: 'test-org-2',
     organizationNumber: '098765-4321',
     address: 'Test Avenue 2',
     zipCode: '54321',
