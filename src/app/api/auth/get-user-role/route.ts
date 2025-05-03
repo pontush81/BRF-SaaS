@@ -30,15 +30,11 @@ export async function GET(request: NextRequest) {
     // Hämta användaren från databasen
     const user = await prisma.user.findUnique({
       where: { email },
-      select: {
-        id: true,
-        role: true,
-        organizationId: true,
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true
+      include: {
+        organizations: {
+          where: { isDefault: true },
+          include: {
+            organization: true
           }
         }
       }
@@ -51,11 +47,14 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Hämta standardorganisationen och rollen
+    const defaultUserOrg = user.organizations.find((org: any) => org.isDefault);
+    
     // Returnera användarens roll och organisation
     return NextResponse.json({
-      role: user.role,
-      organizationId: user.organizationId,
-      organization: user.organization,
+      role: defaultUserOrg?.role || 'GUEST',
+      organizationId: defaultUserOrg?.organizationId,
+      organization: defaultUserOrg?.organization,
     });
     
   } catch (error) {
