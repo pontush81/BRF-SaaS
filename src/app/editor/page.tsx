@@ -138,7 +138,7 @@ export default async function EditorDashboard() {
           <Link href="/dashboard" className="text-blue-600 hover:underline">
             Gå till dashboard
           </Link>
-          <Link href={`https://${organization.slug}.handbok.se`} className="text-blue-600 hover:underline">
+          <Link href={`https://${organization.slug}.handbok.org`} className="text-blue-600 hover:underline">
             Visa offentlig portal
           </Link>
           <Link href="/editor/documents" className="text-blue-600 hover:underline">

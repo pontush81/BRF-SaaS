@@ -308,12 +308,10 @@ export default function SignUpForm({ isAdmin = false, orgSlug = '' }: SignUpForm
                   disabled={loading}
                 />
                 <span className="bg-gray-100 px-3 py-2 rounded-r border border-gray-300 border-l-0 text-gray-500">
-                  .handbok.se
+                  .handbok.org
                 </span>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Endast små bokstäver (a-z), siffror och bindestreck tillåtna
-              </p>
+              <p className="text-xs text-gray-500 mt-1">Exempel: om du vill skapa en förening med adressen <strong>minförening.handbok.org</strong>, ange "minförening"</p>
             </div>
           </>
         )}
