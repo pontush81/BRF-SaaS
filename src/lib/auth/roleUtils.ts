@@ -139,6 +139,9 @@ export async function getCurrentUserServer() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return null;
   
+  // Kontrollera att email finns
+  if (!session.user.email) return null;
+  
   // Hämta användare från databas via repository
   const dbUser = await userRepository.getUserWithOrganizations(session.user.email);
   if (!dbUser) return null;
