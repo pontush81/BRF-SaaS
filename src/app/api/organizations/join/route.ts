@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { UserRole } from '@/lib/auth/roleUtils';
+import { userRepository } from '@/repositories/userRepository';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
 export async function POST(request: NextRequest) {
   const cookieStore = cookies();
@@ -28,18 +30,8 @@ export async function POST(request: NextRequest) {
     
     // Säkerställ att användaren bara kan ansluta sig själv
     if (session.user.id !== userId && session.user.email) {
-      // Dynamisk import av Prisma för att undvika att importera vid byggtid
-      const { default: prisma } = await import('@/lib/prisma');
-      
       // Kontrollera om användaren är admin
-      const adminUser = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        include: {
-          organizations: {
-            where: { role: UserRole.ADMIN }
-          }
-        }
-      });
+      const adminUser = await userRepository.getUserWithRoleInOrganizations(session.user.email, UserRole.ADMIN);
       
       if (!adminUser || adminUser.organizations.length === 0) {
         return NextResponse.json(
@@ -50,11 +42,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Hämta organisationen baserat på slug
-    const { default: prisma } = await import('@/lib/prisma');
-    
-    const organization = await prisma.organization.findUnique({
-      where: { slug: organizationSlug },
-    });
+    const organization = await organizationRepository.getOrganizationBySlug(organizationSlug);
     
     if (!organization) {
       return NextResponse.json(
@@ -64,28 +52,17 @@ export async function POST(request: NextRequest) {
     }
     
     // Uppdatera användaren för att ansluta till organisationen
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        organizations: {
-          create: {
-            organizationId: organization.id,
-            role: UserRole.MEMBER, // Standardroll är medlem
-            isDefault: true // Sätt som standard om det är användarens första organisation
-          }
-        }
-      },
-      include: {
-        organizations: {
-          where: { organizationId: organization.id },
-          include: {
-            organization: true
-          }
-        }
-      }
-    });
+    const updatedUser = await userRepository.connectUserToOrganization(
+      userId, 
+      organization.id,
+      UserRole.MEMBER,
+      true // Sätt som default
+    );
     
-    const userOrganization = updatedUser.organizations[0];
+    // Hitta rätt organisation i användarens lista
+    const userOrganization = updatedUser.organizations.find(
+      org => org.organizationId === organization.id
+    );
     
     return NextResponse.json({
       success: true,
