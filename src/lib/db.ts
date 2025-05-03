@@ -16,16 +16,27 @@ const createPrismaClient = () => {
   const schema = getDatabaseSchema();
   
   // Skapa databasanslutningen med rätt schema
-  return new PrismaClient({
-    datasourceUrl: url ? `${url}${url.includes('?') ? '&' : '?'}schema=${schema}` : undefined,
-    // Direct URL för migrations och databasoperationer som inte går via connection pooler
-    datasources: directUrl ? {
-      db: {
-        url: `${directUrl}${directUrl.includes('?') ? '&' : '?'}schema=${schema}`
-      }
-    } : undefined,
-    log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
-  });
+  // Prioritera directUrl om det finns, annars använd url
+  if (directUrl) {
+    return new PrismaClient({
+      datasources: {
+        db: {
+          url: `${directUrl}${directUrl.includes('?') ? '&' : '?'}schema=${schema}`
+        }
+      },
+      log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
+    });
+  } else if (url) {
+    return new PrismaClient({
+      datasourceUrl: `${url}${url.includes('?') ? '&' : '?'}schema=${schema}`,
+      log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
+    });
+  } else {
+    // Fallback utan särskilda URL-ändringar
+    return new PrismaClient({
+      log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
+    });
+  }
 };
 
 // Exporter klienten baserad på miljö, med säkerhetsåtgärder för produktionsdatabas
