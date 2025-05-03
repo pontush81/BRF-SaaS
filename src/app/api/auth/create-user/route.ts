@@ -81,11 +81,20 @@ export async function POST(request: NextRequest) {
       data: {
         email: userData.email,
         name: userData.name,
-        role: userData.role,
-        organizationId,
+        organizations: {
+          create: {
+            organizationId: organizationId,
+            role: userData.role,
+            isDefault: true
+          }
+        }
       },
       include: {
-        organization: true
+        organizations: {
+          include: {
+            organization: true
+          }
+        }
       }
     });
     
@@ -95,8 +104,8 @@ export async function POST(request: NextRequest) {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
-        role: newUser.role,
-        organization: newUser.organization
+        role: userData.role,
+        organization: newUser.organizations[0]?.organization
       }
     });
     
