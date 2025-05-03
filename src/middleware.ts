@@ -50,9 +50,27 @@ function isStaticAsset(path: string): boolean {
   return (
     path.startsWith('/_next/') ||
     path.startsWith('/static/') ||
-    path.includes('.') ||
-    path === '/favicon.ico'
+    path.startsWith('/favicon.ico') ||
+    path.endsWith('.js') ||
+    path.endsWith('.css') ||
+    path.endsWith('.json') ||
+    path.endsWith('.svg') ||
+    path.endsWith('.png') ||
+    path.endsWith('.jpg') ||
+    path.endsWith('.jpeg') ||
+    path.endsWith('.gif') ||
+    path.endsWith('.webp') ||
+    path.endsWith('.ico') ||
+    path.endsWith('.woff') ||
+    path.endsWith('.woff2') ||
+    path.endsWith('.ttf') ||
+    path.endsWith('.otf')
   );
+}
+
+// Helper function to check if a hostname is a marketing site
+function isMarketingSite(hostname: string, marketingDomains: string[]): boolean {
+  return marketingDomains.some(domain => hostname === domain);
 }
 
 // Interface för en organisation
@@ -83,7 +101,10 @@ export async function middleware(req: NextRequest) {
   // SIMPLIFIED AND ROBUST DOMAIN DETECTION
   // Get APP_DOMAIN and MARKETING_DOMAIN from environment or use sensible defaults
   const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
-  const MARKETING_DOMAIN = process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org';
+  const MARKETING_DOMAINS = [
+    process.env.NEXT_PUBLIC_MARKETING_DOMAIN || 'www.handbok.org',
+    'www.stage.handbok.org' // Add stage domain explicitly
+  ];
   
   // Create a response that can be modified later
   let response = NextResponse.next({
@@ -95,10 +116,13 @@ export async function middleware(req: NextRequest) {
   // Check if this is a subdomain request - handle both production and development
   const isLocalhost = hostname === 'localhost' || hostname.includes('.localhost');
   
+  // Check if this is a marketing site
+  const isMarketingDomain = isMarketingSite(hostname, MARKETING_DOMAINS);
+  
   // First check if this is localhost (for development)
-  // Then check if it's a subdomain of our app domain
+  // Then check if it's a subdomain of our app domain (and not a marketing domain)
   const isSubdomain = !isLocalhost && 
-                      hostname !== MARKETING_DOMAIN && 
+                      !isMarketingDomain && 
                       hostname !== APP_DOMAIN && 
                       (hostname.endsWith(`.${APP_DOMAIN}`) || hostname.includes(`.${APP_DOMAIN}:`));
   
@@ -120,8 +144,8 @@ export async function middleware(req: NextRequest) {
   // Check if the current path is public on marketing site
   const isPublicMarketingPath = isPublicPath(pathname);
   
-  // Allow access to public marketing pages without authentication
-  if (!isSubdomain && isPublicMarketingPath) {
+  // Allow access to public marketing pages without authentication on marketing domains
+  if (isMarketingDomain && isPublicMarketingPath) {
     return response;
   }
   
@@ -228,7 +252,7 @@ export async function middleware(req: NextRequest) {
     }
   } 
   // MARKETING SITE ROUTING LOGIC
-  else {
+  else if (isMarketingDomain || hostname === APP_DOMAIN) {
     // On marketing site, redirect logged-in users with organizations to their default BRF subdomain
     if (isLoggedIn && organizations.length > 0 && pathname === '/dashboard') {
       const defaultOrg = organizations.find(org => org.isDefault) || organizations[0];
@@ -271,13 +295,9 @@ export async function middleware(req: NextRequest) {
 // Define which paths middleware should run on
 export const config = {
   matcher: [
-    /*
-     * Match all paths except for:
-     * - API routes that start with /api/
-     * - Static files like _next/static, favicon.ico, etc.
-     * 
-     * Men vi dubbelkollar statiska resurser i middleware ändå för säkerhets skull
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)).*)',
+    // Match all request paths except for the ones we want to exclude
+    // This is a more restrictive matcher to avoid interfering with static assets
+    // It explicitly avoids ALL static assets with common extensions and _next paths
+    '/((?!_next/static|_next/image|_next/data|favicon.ico|api).*)',
   ],
 };
