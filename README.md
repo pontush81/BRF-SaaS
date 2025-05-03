@@ -133,3 +133,106 @@ Projektet är konfigurerat för deployment på Vercel. När ändringar skickas t
 ## Licens
 
 Detta projekt är privat och får inte användas, kopieras eller distribueras utan uttryckligt tillstånd.
+
+## Miljöhantering
+
+Projektet använder separata miljöer och databasschemata för utveckling, testning, staging och produktion:
+
+### Development (Utveckling)
+- `.env.local` används för lokal utveckling
+- Kör utvecklingsservern med `npm run dev`
+- Loggar är aktiverade för debugging
+- Använder `dev`-schemat i databasen
+- Kan inte påverka produktionsdata
+
+### Testing (Testning)
+- `.env.test` används för testmiljön
+- Kör tester med `npm run test`
+- Använder `test`-schemat i databasen
+- Isolerar testdata från produktionsdata
+- Testverktyg finns i `src/lib/test/testUtils.ts`
+
+### Staging (Förproduktion)
+- `.env.staging` används för staging-miljön
+- Kör med `npm run dev:staging` för lokal staging-miljö
+- Bygg med `npm run build:staging` för deployment
+- Använder `staging`-schemat i databasen
+- Produktionslik miljö utan risk att påverka produktionsdata
+
+### Production (Produktion)
+- `.env.production` används för produktionsmiljön
+- Kör med `npm run build && npm start`
+- Minimala loggar för prestanda
+- Använder `public`-schemat i databasen (standard)
+- Skyddsmekanism förhindrar utveckling/test-verktyg från att påverka produktionsdata
+
+## Databasschema
+
+Varje miljö använder ett separat schema i databasen:
+- `public` - Produktionsdata
+- `staging` - Stagingdata
+- `dev` - Utvecklingsdata
+- `test` - Testdata
+
+Detta ger fullständig isolering mellan miljöerna, så att du kan utveckla och testa utan risk att skada produktionsdata.
+
+## Kopiering av produktionsdata
+
+För att få realistisk data att arbeta med i test/utvecklingsmiljöer finns det script för att kopiera data från produktionen:
+
+```bash
+# Kopiera produktionsdata till utvecklingsmiljön
+npm run copy-prod-to-dev
+
+# Kopiera produktionsdata till testmiljön
+npm run copy-prod-to-test
+
+# Kopiera produktionsdata till staging-miljön
+npm run copy-prod-to-staging
+```
+
+Dessa script är säkra att använda eftersom:
+1. De kontrollerar att måldatabasen inte är produktionsdatabasen
+2. De ber om bekräftelse innan data raderas
+3. De kopierar data till rätt schema baserat på miljöinställningar
+
+## Miljödetektering
+
+I koden kan du använda hjälpfunktioner från `src/lib/env.ts` för att identifiera aktuell miljö:
+
+```typescript
+import { isDevelopment, isTest, isStaging, isProduction, isProductionDatabase } from '@/lib/env';
+
+// Kontrollera miljö
+if (isDevelopment()) {
+  // Utvecklingsspecifik kod
+}
+
+// Skydda produktionsdata
+if (isProductionDatabase()) {
+  throw new Error('Denna operation är inte tillåten i produktionsdatabasen');
+}
+```
+
+## Testning
+
+För att testdata inte ska blandas med produktionsdata följer vi dessa riktlinjer:
+
+1. Använd testverktyg från `src/lib/test/testUtils.ts` för att skapa och hantera testdata
+2. Alla testdata i databasen ska vara markerade med prefix "TEST_" för enkelt rensande
+3. Testmiljön använder ett separat schema i databasen för att isolera data
+4. Använd `seedTestDatabase()` för att skapa testdata och `cleanupTestDatabase()` för att rensa efter tester
+5. Miljöhantering genom `src/lib/env.ts` säkerställer att testverktyg inte kan köras i produktion
+
+För att köra tester:
+
+```bash
+# Kör alla tester
+npm run test
+
+# Kör enskilda testfiler
+npm run test -- -t "filnamn"
+
+# Kör tester med watch-läge
+npm run test:watch
+```

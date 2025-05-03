@@ -1,24 +1,58 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
+import { getEnvironment, Environment, getDatabaseSchema, isProductionDatabase } from "./env";
 
-// PrismaClient is attached to the `global` object in development to prevent
-// exhausting your database connection limit.
-// Learn more: https://pris.ly/d/help/next-js-best-practices
+// PrismaClient är ansluten till $DATABASE_URL (eller $DIRECT_URL i en Edge-funktion)
+// Lär dig mer: https://pris.ly/d/prisma-schema-datasource
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+// Skapa prisma-klienten med rätt schema baserat på miljö
+const createPrismaClient = () => {
+  // Hämta url från miljövariabler
+  const url = process.env.DATABASE_URL;
+  const directUrl = process.env.DIRECT_URL;
+  
+  // Säkerställ att URL:erna innehåller korrekt schema
+  const schema = getDatabaseSchema();
+  
+  // Skapa databasanslutningen med rätt schema
+  return new PrismaClient({
+    datasourceUrl: url ? `${url}${url.includes('?') ? '&' : '?'}schema=${schema}` : undefined,
+    // Direct URL för migrations och databasoperationer som inte går via connection pooler
+    datasources: directUrl ? {
+      db: {
+        url: `${directUrl}${directUrl.includes('?') ? '&' : '?'}schema=${schema}`
+      }
+    } : undefined,
+    log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
   });
+};
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+// Exporter klienten baserad på miljö, med säkerhetsåtgärder för produktionsdatabas
+export const prisma = globalForPrisma.prisma || createPrismaClient();
 
-// Utility function to check database connection
+// Om vi inte är i produktionsmiljö, lägg till prisma till
+// den globala objektet för att förhindra flera instanser av Prisma Client i utvecklings-/testmiljö
+if (getEnvironment() !== Environment.PRODUCTION) {
+  globalForPrisma.prisma = prisma;
+}
+
+export default prisma;
+
+// Kontrollera databasanslutning med schema-info
 export async function checkDatabaseConnection() {
   try {
     await prisma.$connect();
-    return { connected: true, message: 'Database connection successful' };
+    
+    const schema = getDatabaseSchema();
+    const isProdDb = isProductionDatabase();
+    
+    return { 
+      connected: true, 
+      message: 'Database connection successful',
+      schema,
+      isProductionDatabase: isProdDb
+    };
   } catch (error) {
     console.error('Database connection failed:', error);
     return { 
