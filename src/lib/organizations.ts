@@ -154,8 +154,13 @@ export async function createOrganization(data: {
       await prisma.user.update({
         where: { id: data.userId },
         data: {
-          organizationId: organization.id,
-          role: 'ADMIN',
+          organizations: {
+            create: {
+              organizationId: organization.id,
+              role: 'ADMIN',
+              isDefault: true
+            }
+          }
         },
       });
     }
@@ -235,9 +240,8 @@ export async function deleteOrganization(id: string) {
     }
     
     // Uppdatera användare för att ta bort kopplingen till organisationen
-    await prisma.user.updateMany({
-      where: { organizationId: id },
-      data: { organizationId: null, role: UserRole.MEMBER },
+    await prisma.userOrganization.deleteMany({
+      where: { organizationId: id }
     });
     
     // Ta bort organisationen
