@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import '../styles/globals.css';
+import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import Navigation from '@/components/Navigation';
 import { isDevelopment, isTest, isStaging, isProductionDatabase, logEnvironmentInfo } from "@/lib/env";
@@ -23,6 +23,9 @@ export default function RootLayout({
 
   return (
     <html lang="sv">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
       <body className={inter.className}>
         {/* Visa varning i icke-produktionsmiljöer */}
         {(isDevelopment() || isTest() || isStaging()) && (
