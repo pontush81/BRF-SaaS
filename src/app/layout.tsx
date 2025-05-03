@@ -5,20 +5,18 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import Navigation from '@/components/Navigation';
 import { isDevelopment, isTest, isStaging, isProductionDatabase, logEnvironmentInfo } from "@/lib/env";
 
-// Ladda Inter-typsnittet utan att använda font/google för bättre kompatibilitet
-const inter = Inter({ 
-  subsets: ['latin'],
-  display: 'swap',
-  preload: true,
-  variable: '--font-inter'
-});
+// Förenkla fontladdningen
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'BRF-SaaS | Bostadsrättsföreningar som en tjänst',
   description: 'En SaaS-plattform för hantering av bostadsrättsföreningar',
   keywords: 'brf, bostadsrättsförening, saas, fastighetsförvaltning, multi-tenant',
+  // Explicit favicon i metadata
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon' }
+    ]
   }
 };
 
@@ -27,26 +25,19 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Logga miljöinformation vid uppstart på serversidan
-  logEnvironmentInfo();
+  // Ta bort loggning för förenkling
+  // logEnvironmentInfo();
 
   return (
     <html lang="sv">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <meta httpEquiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'self' 'unsafe-inline' 'unsafe-eval'; style-src * 'self' 'unsafe-inline'; img-src * data: blob: 'self'; font-src * data: 'self'; connect-src * 'self'; frame-src 'self';" />
+        {/* Garantera favicon location */}
+        <link rel="icon" href="/favicon.ico" />
+        
+        {/* Extremt tillåtande CSP för felsökning */}
+        <meta httpEquiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline'; font-src * data:;" />
       </head>
       <body className={inter.className}>
-        {/* Visa varning i icke-produktionsmiljöer */}
-        {(isDevelopment() || isTest() || isStaging()) && (
-          <div className="bg-amber-500 text-black p-2 text-center text-sm font-medium">
-            {isDevelopment() && "UTVECKLINGSMILJÖ"}
-            {isTest() && "TESTMILJÖ"}
-            {isStaging() && "STAGING-MILJÖ"} 
-            {" - Ändringar i denna miljö påverkar inte produktionsdata"}
-          </div>
-        )}
         <AuthProvider>
           <Navigation />
           <main className="min-h-screen bg-gray-50">
