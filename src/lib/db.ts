@@ -8,34 +8,20 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 // Skapa prisma-klienten med rätt schema baserat på miljö
 const createPrismaClient = () => {
-  // Hämta url från miljövariabler
-  const url = process.env.DATABASE_URL;
-  const directUrl = process.env.DIRECT_URL;
+  // För Supabase bör vi inte ändra schema-parametern eftersom det orsakar problem
+  // Supabase hanterar redan schema korrekt baserat på anslutningssträngen
   
-  // Säkerställ att URL:erna innehåller korrekt schema
-  const schema = getDatabaseSchema();
+  // Logga anslutningsinformation (utan känsliga detaljer)
+  console.log('Creating Prisma client in environment:', getEnvironment());
+  console.log('Database schema:', getDatabaseSchema());
   
-  // Skapa databasanslutningen med rätt schema
-  // Prioritera directUrl om det finns, annars använd url
-  if (directUrl) {
-    return new PrismaClient({
-      datasources: {
-        db: {
-          url: `${directUrl}${directUrl.includes('?') ? '&' : '?'}schema=${schema}`
-        }
-      },
-      log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
-    });
-  } else if (url) {
-    return new PrismaClient({
-      datasourceUrl: `${url}${url.includes('?') ? '&' : '?'}schema=${schema}`,
-      log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
-    });
-  } else {
-    // Fallback utan särskilda URL-ändringar
+  try {
     return new PrismaClient({
       log: getEnvironment() === Environment.DEVELOPMENT ? ["error", "warn"] : ["error"],
     });
+  } catch (error) {
+    console.error('Failed to create Prisma client:', error);
+    throw error;
   }
 };
 

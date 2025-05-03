@@ -90,24 +90,22 @@ export default function JoinOrganizationForm() {
             Föreningens webbadress
           </label>
           <div className="flex items-center">
-            <span className="bg-gray-100 px-3 py-2 rounded-l border border-gray-300 border-r-0 text-gray-500">
-              https://
-            </span>
             <input
               id="orgSlug"
               type="text"
               value={orgSlug}
               onChange={(e) => setOrgSlug(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               placeholder="din-forening"
-              className="flex-1 px-3 py-2 border border-gray-300 focus:ring-blue-500 focus:border-blue-500 block sm:text-sm rounded-none"
               disabled={loading}
+              required
             />
-            <span className="bg-gray-100 px-3 py-2 rounded-r border border-gray-300 border-l-0 text-gray-500">
-              .handbok.se
+            <span className="bg-gray-100 text-gray-600 px-3 py-2 border border-l-0 border-gray-300 rounded-r-md">
+              .handbok.org
             </span>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
-            Exempel: om din förening har adressen minbrf.handbok.se, ange "minbrf"
+          <p className="text-xs text-gray-500 mt-1">
+            Exempel: om din förening har adressen minbrf.handbok.org, ange "minbrf"
           </p>
         </div>
 

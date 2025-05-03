@@ -123,19 +123,24 @@ export default function CreateOrganizationForm() {
           <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-1">
             Slug / subdomän *
           </label>
-          <div className="flex items-center">
+          <div className="mt-1 flex rounded-md shadow-sm">
+            <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+              https://
+            </span>
             <input
-              id="slug"
               type="text"
+              name="slug"
+              id="slug"
+              className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              placeholder="din-forening"
+              required
+              pattern="^[a-z0-9]+(-[a-z0-9]+)*$"
+              title="Använd endast små bokstäver, siffror och bindestreck. Bindestreck kan inte vara i början eller slutet."
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-l-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="exempel"
-              disabled={isSubmitting || success}
-              required
             />
-            <span className="bg-gray-100 text-gray-600 px-3 py-2 border border-l-0 border-gray-300 rounded-r-md">
-              .handbok.se
+            <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+              .handbok.org
             </span>
           </div>
           <p className="mt-1 text-sm text-gray-500">

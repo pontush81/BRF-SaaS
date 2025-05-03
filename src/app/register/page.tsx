@@ -61,7 +61,7 @@ export default async function Register({
                   <p className="font-medium">Viktigt information</p>
                   <p className="text-sm mt-1">
                     Du bör registrera dig direkt på din förenings webbplats: 
-                    <strong>dinförening.handbok.se</strong>
+                    <strong>dinförening.handbok.org</strong>
                   </p>
                   <p className="text-sm mt-1">
                     Be din styrelse om den korrekta webbadressen om du är osäker.
@@ -95,7 +95,7 @@ export default async function Register({
           {registrationType === 'admin' ? (
             <p className="text-sm text-gray-600">
               Är du redan medlem i en förening som använder tjänsten?{' '}
-              <Link href={orgSlug ? `https://${orgSlug}.handbok.se/login` : `/login`} className="text-blue-600 hover:underline">
+              <Link href={orgSlug ? `https://${orgSlug}.handbok.org/login` : `/login`} className="text-blue-600 hover:underline">
                 Logga in här
               </Link>
             </p>
@@ -113,7 +113,7 @@ export default async function Register({
       <div className="mt-8">
         <p className="text-center text-gray-500 text-sm">
           Har du redan ett konto?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline">
+          <Link href={orgSlug ? `https://${orgSlug}.handbok.org/login` : `/login`} className="text-blue-600 hover:underline">
             Logga in
           </Link>
         </p>

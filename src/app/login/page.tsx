@@ -51,7 +51,7 @@ export default async function LoginPage({
             <p className="text-gray-600">
               Du bör logga in direkt på din förenings webbadress 
               <br />
-              <span className="font-mono text-sm">(dinförening.handbok.se)</span>
+              <span className="font-mono text-sm">(dinförening.handbok.org)</span>
             </p>
           </div>
           <div className="mt-4">

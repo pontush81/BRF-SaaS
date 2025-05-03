@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: 'BRF Handbok - Den digitala lösningen för bostadsrättsföreningar',
     description: 'Förenkla hanteringen av din bostadsrättsförening med vår digitala handbok. Samlad information, dokument och kommunikation på ett ställe.',
     type: 'website',
-    url: 'https://handbok.se',
+    url: 'https://handbok.org',
   },
 };
 
@@ -20,7 +20,7 @@ export default async function Home() {
 
   // If user is logged in and has an organization, redirect to subdomain
   if (user?.organization?.slug) {
-    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.se';
+    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
     const subdomain = `${user.organization.slug}.${appDomain}`;
     redirect(`https://${subdomain}/dashboard`);
   }
@@ -37,6 +37,17 @@ export default async function Home() {
             <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8">
               Samla all information på ett ställe. Förenkla styrelsearbetet och förbättra kommunikationen med alla boende.
             </p>
+            
+            {/* Test links for static files */}
+            <div className="mb-8 p-4 bg-gray-100 rounded-lg">
+              <p className="text-sm text-gray-700 mb-2">Testlänkar för statiska filer:</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <a href="/favicon.ico" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">Favicon</a>
+                <a href="/empty.css" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">CSS Test</a>
+                <a href="/empty.js" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">JS Test</a>
+              </div>
+            </div>
+            
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link href="/register?type=admin" className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors w-full sm:w-auto">
                 Registrera din förening
@@ -63,7 +74,7 @@ export default async function Home() {
               </div>
               <h3 className="text-lg md:text-xl font-semibold mb-3">Egen subdomän</h3>
               <p className="text-gray-600">
-                Varje förening får en egen subdomän (dinförening.handbok.se) för enkel åtkomst till innehållet.
+                Varje förening får en egen subdomän (dinförening.handbok.org) för enkel åtkomst till innehållet.
               </p>
             </div>
             

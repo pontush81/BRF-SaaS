@@ -1,16 +1,23 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import '../styles/globals.css';
+import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import Navigation from '@/components/Navigation';
 import { isDevelopment, isTest, isStaging, isProductionDatabase, logEnvironmentInfo } from "@/lib/env";
 
+// Förenkla fontladdningen
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'BRF-SaaS | Bostadsrättsföreningar som en tjänst',
   description: 'En SaaS-plattform för hantering av bostadsrättsföreningar',
   keywords: 'brf, bostadsrättsförening, saas, fastighetsförvaltning, multi-tenant',
+  // Explicit favicon i metadata
+  icons: {
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon' }
+    ]
+  }
 };
 
 export default function RootLayout({
@@ -18,21 +25,19 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Logga miljöinformation vid uppstart på serversidan
-  logEnvironmentInfo();
+  // Ta bort loggning för förenkling
+  // logEnvironmentInfo();
 
   return (
     <html lang="sv">
+      <head>
+        {/* Garantera favicon location */}
+        <link rel="icon" href="/favicon.ico" />
+        
+        {/* Extremt tillåtande CSP för felsökning */}
+        <meta httpEquiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline'; font-src * data:;" />
+      </head>
       <body className={inter.className}>
-        {/* Visa varning i icke-produktionsmiljöer */}
-        {(isDevelopment() || isTest() || isStaging()) && (
-          <div className="bg-amber-500 text-black p-2 text-center text-sm font-medium">
-            {isDevelopment() && "UTVECKLINGSMILJÖ"}
-            {isTest() && "TESTMILJÖ"}
-            {isStaging() && "STAGING-MILJÖ"} 
-            {" - Ändringar i denna miljö påverkar inte produktionsdata"}
-          </div>
-        )}
         <AuthProvider>
           <Navigation />
           <main className="min-h-screen bg-gray-50">

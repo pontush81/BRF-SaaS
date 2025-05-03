@@ -18,7 +18,7 @@ datasource db {
 model Organization {
   id            String              @id @default(uuid())
   name          String
-  slug          String              @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.se
+  slug          String              @unique // För subdomän, t.ex. "enbrf" för enbrf.handbok.org
   domain        String?             @unique // För anpassad domän (frivillig)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
