@@ -75,14 +75,24 @@ export const userRepository = {
    * Hämtar en användare med organisationer filtrerade efter roll
    */
   async getUserWithRoleInOrganizations(email: string, role: UserRole): Promise<UserWithOrganizations | null> {
-    // Map our application UserRole to the string value expected by Prisma
-    const prismaRole = role.toString();
+    // Convert our application UserRole to Prisma's enum values
+    let prismaRole;
+    
+    if (role === UserRole.ADMIN) {
+      prismaRole = 'ADMIN';
+    } else if (role === UserRole.EDITOR) {
+      prismaRole = 'EDITOR';
+    } else {
+      prismaRole = 'MEMBER';
+    }
     
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
         organizations: {
-          where: { role: prismaRole },
+          where: { 
+            role: prismaRole as any 
+          },
           include: {
             organization: true
           }
@@ -104,8 +114,16 @@ export const userRepository = {
   }): Promise<UserWithOrganizations> {
     const { email, name, organizationId, role = UserRole.MEMBER } = userData;
     
-    // Map our application UserRole to the string value expected by Prisma
-    const prismaRole = role.toString();
+    // Convert our application UserRole to Prisma's enum values
+    let prismaRole;
+    
+    if (role === UserRole.ADMIN) {
+      prismaRole = 'ADMIN';
+    } else if (role === UserRole.EDITOR) {
+      prismaRole = 'EDITOR';
+    } else {
+      prismaRole = 'MEMBER';
+    }
 
     const user = await prisma.user.create({
       data: {
@@ -115,7 +133,7 @@ export const userRepository = {
           organizations: {
             create: {
               organizationId,
-              role: prismaRole,
+              role: prismaRole as any,
               isDefault: true
             }
           }
@@ -137,8 +155,16 @@ export const userRepository = {
    * Ansluter en användare till en organisation
    */
   async connectUserToOrganization(userId: string, organizationId: string, role: UserRole = UserRole.MEMBER, isDefault: boolean = false): Promise<UserWithOrganizations> {
-    // Map our application UserRole to the string value expected by Prisma
-    const prismaRole = role.toString();
+    // Convert our application UserRole to Prisma's enum values
+    let prismaRole;
+    
+    if (role === UserRole.ADMIN) {
+      prismaRole = 'ADMIN';
+    } else if (role === UserRole.EDITOR) {
+      prismaRole = 'EDITOR';
+    } else {
+      prismaRole = 'MEMBER';
+    }
     
     const user = await prisma.user.update({
       where: { id: userId },
@@ -146,7 +172,7 @@ export const userRepository = {
         organizations: {
           create: {
             organizationId,
-            role: prismaRole,
+            role: prismaRole as any,
             isDefault
           }
         }
