@@ -1,4 +1,7 @@
 import { createServerClient } from '../supabase';
+import { UserWithOrganizations, UserOrganizationWithOrg, getDefaultOrganization } from '@/types/prisma';
+import { userRepository } from '@/repositories/userRepository';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
 // Definiera UserRole-enum som motsvarar Prisma-schemat
 export enum UserRole {
@@ -7,7 +10,7 @@ export enum UserRole {
   MEMBER = 'MEMBER'
 }
 
-// Definiera vår egen User-typ baserad på Prisma-schema
+// Definiera kompatibilitet med äldre koddelar (för legacy support)
 export interface User {
   id: string;
   email: string;
@@ -27,9 +30,23 @@ export type UserWithOrg = User & {
 /**
  * Kontrollerar om en användare har en specifik roll
  */
-export function hasRole(user: User | UserWithOrg | null, role: UserRole): boolean {
+export function hasRole(user: User | UserWithOrg | UserWithOrganizations | null, role: UserRole): boolean {
   if (!user) return false;
   
+  // Om den nya UserWithOrganizations används
+  if ('organizations' in user) {
+    return user.organizations.some(org => {
+      // Adminrättigheter över alla roller
+      if (org.role === UserRole.ADMIN) return true;
+      // Editorrättigheter över editor och member
+      if (org.role === UserRole.EDITOR && (role === UserRole.EDITOR || role === UserRole.MEMBER)) return true;
+      // Memberrättigheter bara över member
+      if (org.role === UserRole.MEMBER && role === UserRole.MEMBER) return true;
+      return false;
+    });
+  }
+  
+  // Legacy support för gamla User/UserWithOrg
   // Admins har alla rättigheter
   if (user.role === UserRole.ADMIN) return true;
   
@@ -51,20 +68,34 @@ export async function prepareUserOnSignUp(
   organizationId: string | null = null,
   role: UserRole = UserRole.MEMBER
 ): Promise<User> {
-  // Dynamisk import av Prisma för att undvika att importera vid byggtid
-  const { default: prisma } = await import('../prisma');
+  // Använd userRepository istället för direkta prisma-anrop
+  const createData: {
+    email: string;
+    name: string | null;
+    organizationId?: string;
+    role: UserRole;
+  } = {
+    email,
+    name,
+    role
+  };
   
-  // Skapa användare i databasen
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name,
-      role,
-      organizationId
-    }
-  });
+  // Lägg bara till organizationId om det inte är null
+  if (organizationId) {
+    createData.organizationId = organizationId;
+  }
   
-  return user as unknown as User;
+  const user = await userRepository.createUserWithOrganization(createData);
+  
+  // Konvertera till legacy format för kompabilitet
+  const defaultOrg = getDefaultOrganization(user);
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: defaultOrg?.role || role,
+    organizationId: defaultOrg?.organizationId || null
+  };
 }
 
 /**
@@ -75,27 +106,31 @@ export async function connectUserToOrganization(
   organizationId: string,
   role: UserRole = UserRole.MEMBER
 ): Promise<User> {
-  // Dynamisk import av Prisma för att undvika att importera vid byggtid
-  const { default: prisma } = await import('../prisma');
+  // Använd userRepository istället för direkta prisma-anrop
+  const user = await userRepository.connectUserToOrganization(
+    userId,
+    organizationId,
+    role,
+    true // Sätt som standardorganisation
+  );
   
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      organizationId,
-      role
-    }
-  });
-  
-  return user as unknown as User;
+  // Konvertera till legacy format för kompabilitet
+  const defaultOrg = getDefaultOrganization(user);
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: defaultOrg?.role || role,
+    organizationId: defaultOrg?.organizationId || null
+  };
 }
 
 // === Server Component only functions (App Router) ===
 // Dessa funktioner kan bara användas i server components inom /app katalogen
 
 export async function getCurrentUserServer() {
-  // Dynamisk import för att undvika att importera next/headers och prisma vid byggtid
+  // Dynamisk import för att undvika att importera next/headers vid byggtid
   const { cookies } = await import('next/headers');
-  const { default: prisma } = await import('../prisma');
   
   const cookieStore = cookies();
   const supabase = createServerClient();
@@ -104,23 +139,24 @@ export async function getCurrentUserServer() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return null;
   
-  // Hämta användare från databas
-  const dbUser = await prisma.user.findUnique({
-    where: { 
-      email: session.user.email 
-    },
-    include: {
-      organization: {
-        select: {
-          id: true,
-          name: true,
-          slug: true
-        }
-      }
-    }
-  });
+  // Hämta användare från databas via repository
+  const dbUser = await userRepository.getUserWithOrganizations(session.user.email);
+  if (!dbUser) return null;
   
-  return dbUser as unknown as UserWithOrg;
+  // Konvertera till legacy format för kompabilitet
+  const defaultOrg = getDefaultOrganization(dbUser);
+  return {
+    id: dbUser.id,
+    email: dbUser.email,
+    name: dbUser.name,
+    role: defaultOrg?.role || UserRole.MEMBER,
+    organizationId: defaultOrg?.organizationId || null,
+    organization: defaultOrg?.organization ? {
+      id: defaultOrg.organization.id,
+      name: defaultOrg.organization.name,
+      slug: defaultOrg.organization.slug
+    } : null
+  } as UserWithOrg;
 }
 
 // === För användning i både Pages Router och App Router ===
