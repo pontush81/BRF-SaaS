@@ -51,11 +51,11 @@ export const getEnvironment = (): Environment => {
 export const getDatabaseEnvironment = (): DatabaseEnvironment => {
   // Kontrollera för Vercel-specifika miljövariabler först
   if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_ENV_PREVIEW_DATABASE_ENV) {
-    return process.env.VERCEL_ENV_PREVIEW_DATABASE_ENV as DatabaseEnvironment;
+    return process.env.VERCEL_ENV_PREVIEW_DATABASE_ENV as unknown as DatabaseEnvironment;
   }
   
   if (process.env.VERCEL_ENV === 'development' && process.env.VERCEL_ENV_DEVELOPMENT_DATABASE_ENV) {
-    return process.env.VERCEL_ENV_DEVELOPMENT_DATABASE_ENV as DatabaseEnvironment;
+    return process.env.VERCEL_ENV_DEVELOPMENT_DATABASE_ENV as unknown as DatabaseEnvironment;
   }
   
   // Fallback till standard DATABASE_ENV
