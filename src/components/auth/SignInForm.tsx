@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 // Definiera konstanter för Supabase direkt i komponenten för att undvika problem med miljövariabler
 const SUPABASE_URL = 'https://lcckqvnwnrgvpnpavhyp.supabase.co';
@@ -92,9 +93,7 @@ export default function SignInForm() {
   };
 
   return (
-    <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-center">Logga in</h2>
-      
+    <div className="w-full">
       {errorMessage && (
         <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
           {errorMessage}
@@ -148,18 +147,9 @@ export default function SignInForm() {
       </form>
       
       <div className="mt-4 text-sm text-center">
-        <a href="/forgot-password" className="text-blue-600 hover:underline">
+        <Link href="/forgot-password" className="text-blue-600 hover:underline">
           Glömt lösenord?
-        </a>
-      </div>
-      
-      <div className="mt-6 border-t pt-4">
-        <p className="text-sm text-center">
-          Har du inget konto?{' '}
-          <a href="/register" className="text-blue-600 hover:underline">
-            Registrera dig
-          </a>
-        </p>
+        </Link>
       </div>
     </div>
   );

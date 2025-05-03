@@ -41,8 +41,8 @@ export default async function Home() {
                 Samla all information på ett ställe. Förenkla styrelsearbetet och förbättra kommunikationen med alla boende.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/register" className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors">
-                  Kom igång idag
+                <Link href="/register?type=admin" className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors">
+                  Registrera din förening
                 </Link>
                 <Link href="/features" className="bg-white hover:bg-gray-50 text-blue-600 font-medium py-3 px-6 rounded-lg border border-blue-200 text-center transition-colors">
                   Upptäck funktioner
@@ -116,8 +116,8 @@ export default async function Home() {
           <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
             Skapa ett konto idag och ta det första steget mot en bättre föreningsadministration.
           </p>
-          <Link href="/register" className="bg-white hover:bg-gray-100 text-blue-600 font-medium py-3 px-8 rounded-lg inline-block transition-colors">
-            Skapa konto
+          <Link href="/register?type=admin" className="bg-white hover:bg-gray-100 text-blue-600 font-medium py-3 px-8 rounded-lg inline-block transition-colors">
+            Registrera din förening
           </Link>
         </div>
       </section>

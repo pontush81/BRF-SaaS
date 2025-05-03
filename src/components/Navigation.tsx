@@ -136,10 +136,16 @@ export default function Navigation() {
                   Logga in
                 </Link>
                 <Link
-                  href="/register"
+                  href="/find-association"
+                  className="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Hitta din förening
+                </Link>
+                <Link
+                  href="/register?type=admin"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-sm font-medium"
                 >
-                  Registrera
+                  Registrera förening
                 </Link>
               </>
             )}
@@ -281,10 +287,16 @@ export default function Navigation() {
                 Logga in
               </Link>
               <Link
-                href="/register"
+                href="/find-association"
+                className="block px-3 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+              >
+                Hitta din förening
+              </Link>
+              <Link
+                href="/register?type=admin"
                 className="block px-3 py-2 text-base font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-md"
               >
-                Registrera
+                Registrera förening
               </Link>
             </div>
           )}

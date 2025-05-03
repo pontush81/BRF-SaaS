@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import SignUpForm from '@/components/auth/SignUpForm';
 import { createServerClient } from '@/lib/supabase';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Registrera konto - BRF Handbok',
@@ -31,7 +32,7 @@ export default async function Register({
   }
 
   // Få registreringstyp från query-parametrar
-  const registrationType = searchParams.type || 'member';
+  const registrationType = searchParams.type || 'admin'; // Ändrat default till admin
   const orgSlug = searchParams.org || '';
   
   return (
@@ -40,9 +41,9 @@ export default async function Register({
         {registrationType === 'admin' ? (
           <>
             <div className="text-center">
-              <h1 className="text-2xl font-bold">Registrera som BRF-admin</h1>
+              <h1 className="text-2xl font-bold">Registrera din förening</h1>
               <p className="mt-2 text-gray-600">
-                Skapa ett konto för att köpa BRF-handboken till din förening
+                Skapa ett administratörskonto för att köpa BRF-handboken till din förening
               </p>
             </div>
             <SignUpForm isAdmin={true} />
@@ -50,10 +51,28 @@ export default async function Register({
         ) : (
           <>
             <div className="text-center">
-              <h1 className="text-2xl font-bold">Registrera som medlem</h1>
-              <p className="mt-2 text-gray-600">
-                Skapa ett konto för att ansluta till din BRFs handbok
-              </p>
+              <h1 className="text-2xl font-bold">Registrera som föreningsmedlem</h1>
+              {orgSlug ? (
+                <p className="mt-2 text-gray-600">
+                  Skapa ett medlemskonto för föreningen <strong>{orgSlug}</strong>
+                </p>
+              ) : (
+                <div className="mt-2 p-3 bg-yellow-50 text-yellow-700 rounded-md">
+                  <p className="font-medium">Viktigt information</p>
+                  <p className="text-sm mt-1">
+                    Du bör registrera dig direkt på din förenings webbplats: 
+                    <strong>dinförening.handbok.se</strong>
+                  </p>
+                  <p className="text-sm mt-1">
+                    Be din styrelse om den korrekta webbadressen om du är osäker.
+                  </p>
+                  <p className="text-sm mt-2">
+                    <Link href="/find-association" className="text-yellow-700 hover:underline font-medium">
+                      Hitta din förenings webbplats här →
+                    </Link>
+                  </p>
+                </div>
+              )}
             </div>
             <SignUpForm isAdmin={false} orgSlug={orgSlug as string} />
           </>
@@ -62,17 +81,17 @@ export default async function Register({
         <div className="mt-8 pt-6 border-t border-gray-200 text-center">
           {registrationType === 'admin' ? (
             <p className="text-sm text-gray-600">
-              Är du boende i en BRF som redan använder tjänsten?{' '}
-              <a href="/register?type=member" className="text-blue-600 hover:underline">
-                Registrera som medlem istället
-              </a>
+              Är du redan medlem i en förening som använder tjänsten?{' '}
+              <Link href={orgSlug ? `https://${orgSlug}.handbok.se/login` : `/login`} className="text-blue-600 hover:underline">
+                Logga in här
+              </Link>
             </p>
           ) : (
             <p className="text-sm text-gray-600">
               Representerar du en bostadsrättsförening?{' '}
-              <a href="/register?type=admin" className="text-blue-600 hover:underline">
-                Registrera som BRF-admin istället
-              </a>
+              <Link href="/register?type=admin" className="text-blue-600 hover:underline">
+                Registrera din förening här
+              </Link>
             </p>
           )}
         </div>
@@ -81,9 +100,9 @@ export default async function Register({
       <div className="mt-8">
         <p className="text-center text-gray-500 text-sm">
           Har du redan ett konto?{' '}
-          <a href="/login" className="text-blue-600 hover:underline">
+          <Link href="/login" className="text-blue-600 hover:underline">
             Logga in
-          </a>
+          </Link>
         </p>
       </div>
     </div>
