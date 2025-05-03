@@ -81,13 +81,15 @@ export async function POST(request: NextRequest) {
       data: {
         email: userData.email,
         name: userData.name,
-        organizations: {
-          create: {
-            organizationId: organizationId,
-            role: userData.role,
-            isDefault: true
+        ...(organizationId ? {
+          organizations: {
+            create: {
+              organizationId: organizationId,
+              role: userData.role,
+              isDefault: true
+            }
           }
-        }
+        } : {})
       },
       include: {
         organizations: {
