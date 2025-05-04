@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import Navigation from '@/components/Navigation';
+import { ToastProvider } from '@/components/ui/use-toast';
 import { isDevelopment, isTest, isStaging, isProductionDatabase, logEnvironmentInfo } from "@/lib/env";
 
 // Förenkla fontladdningen
@@ -39,10 +40,12 @@ export default function RootLayout({
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          <Navigation />
-          <main className="min-h-screen bg-gray-50">
-            {children}
-          </main>
+          <ToastProvider>
+            <Navigation />
+            <main className="min-h-screen bg-gray-50">
+              {children}
+            </main>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

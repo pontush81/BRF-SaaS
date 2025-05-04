@@ -272,3 +272,35 @@ After updating, your email confirmation links will point to the correct domain i
 ### Troubleshooting Email Confirmations
 
 If users report confirmation emails with incorrect links (e.g., pointing to `localhost:3000`), follow the steps above to fix the issue in the Supabase Dashboard.
+
+## Säker hantering av API-nycklar
+
+För att säkerställa säkerheten i applikationen är det viktigt att hantera API-nycklar och hemligheter på ett säkert sätt:
+
+### Stripe API-nycklar
+
+Stripe API-nycklar bör hanteras med särskild försiktighet:
+
+1. **Använd miljövariabler**: Spara aldrig API-nycklar direkt i koden. Använd `.env`-filer för utveckling och säkra miljövariabler i produktionsmiljön.
+
+2. **Skydda både testnycklar och produktionsnycklar**: Även om testnycklar (`sk_test_...`) inte kan användas för riktiga betalningar, bör de hanteras som känsliga.
+
+3. **Dela aldrig nycklar i klartext**: Använd säkra kanaler för att dela nycklar med teammedlemmar. Dela aldrig nycklar via e-post, chatt eller versionshanteringssystem.
+
+4. **Rotera nycklar regelbundet**: Byt ut alla API-nycklar regelbundet, särskilt produktionsnycklarna.
+
+5. **Begränsade nycklar**: Använd "restricted keys" i Stripe där möjligt för att begränsa behörigheter.
+
+6. **Om en nyckel läcks**:
+   - Logga in på Stripe Dashboard → Developers → API Keys
+   - Klicka på "Roll key" för att skapa en ny nyckel
+   - Uppdatera alla miljöer med den nya nyckeln
+   - Undersök om obehörig åtkomst kan ha skett
+
+### Exempel på .env-format
+
+```
+# Stripe API (använd dessa formatexempel, fyll INTE i riktiga nycklar här)
+STRIPE_SECRET_KEY="sk_test_your_stripe_test_key" # Testmiljö
+STRIPE_SECRET_KEY="sk_live_your_stripe_live_key" # Produktionsmiljö
+```
