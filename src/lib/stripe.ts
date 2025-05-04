@@ -352,7 +352,8 @@ export async function handleStripeWebhook(event: Stripe.Event) {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = (invoice as any).subscription as string || invoice.subscription_details?.subscription as string;
+        // Konvertera hela objektet till any för att undvika egenskapsfel
+        const subscriptionId = (invoice as any).subscription;
         
         const subscription = await prisma.subscription.findFirst({
           where: { stripeSubscriptionId: subscriptionId },
@@ -373,7 +374,8 @@ export async function handleStripeWebhook(event: Stripe.Event) {
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = invoice.subscription as string;
+        // Konvertera hela objektet till any för att undvika egenskapsfel
+        const subscriptionId = (invoice as any).subscription;
         
         const subscription = await prisma.subscription.findFirst({
           where: { stripeSubscriptionId: subscriptionId },
