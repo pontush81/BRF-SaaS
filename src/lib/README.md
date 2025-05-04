@@ -10,8 +10,10 @@ The Supabase authentication implementation is organized as follows:
 - `src/supabase-server.ts` - Server-side Supabase configuration with special handling for Next.js App Router, only for server components
 - `src/lib/supabase-minimal.ts` - Minimal Supabase constants and utilities shared by both client and server
 
-### Compatibility Layer
+### Path Aliasing and Export Structure
 
+- `src/supabase-server/index.ts` - Re-exports from `supabase-server.ts` to make the `@/supabase-server` import work with path aliases
+- `src/supabase-client/index.ts` - Re-exports from `supabase-client.ts` to make the `@/supabase-client` import work with path aliases
 - `src/lib/supabase.ts` - Legacy compatibility file that re-exports from `supabase-minimal.ts` for backward compatibility
 
 ### Authentication Utilities
