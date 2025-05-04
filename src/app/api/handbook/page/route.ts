@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPageById, createPage, updatePage, deletePage } from '@/lib/handbooks';
 import { getSectionById, getHandbookById } from '@/lib/handbooks';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@/supabase-server';
 
 // Helper för att verifiera behörigheter
 async function verifyPermission(request: NextRequest, pageId?: string, sectionId?: string) {
-  const supabase = createClient();
+  const supabase = createServerClient(cookies());
   
   // Kontrollera autentisering
   const { data: { user } } = await supabase.auth.getUser();

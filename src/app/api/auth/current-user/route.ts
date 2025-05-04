@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import { UserRole } from '@/lib/auth/roleUtils';
+import { createServerClient } from '@/supabase-server';
 
 // Definiera interface för organisation och användarorganisation
 interface Organization {
@@ -27,85 +27,118 @@ interface UserOrganizationWithOrg {
 }
 
 export async function GET(request: NextRequest) {
-  const cookieStore = cookies();
-  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-  
   try {
-    // Verifierar att användaren är autentiserad
-    const { data: { session } } = await supabase.auth.getSession();
+    const cookieStore = cookies();
     
-    if (!session || !session.user) {
-      return NextResponse.json({ error: 'Ej autentiserad' }, { status: 401 });
+    // Logga alla cookies för debugging
+    const allCookies = cookieStore.getAll();
+    console.log("[API] Cookies:", allCookies.map(c => c.name).join(', '));
+    
+    // Skapa Supabase-klient med server-server implementationen
+    const supabase = createServerClient(cookieStore);
+    
+    console.log("[API] /api/auth/current-user anropad");
+    
+    // Kontrollera att supabase och auth är tillgängliga
+    if (!supabase || !supabase.auth) {
+      console.error("[API] Failed to create Supabase client or auth is undefined");
+      return NextResponse.json({ error: 'Authentication error' }, { status: 500 });
     }
     
-    // Kontrollera att email finns
-    if (!session.user.email) {
-      return NextResponse.json({ error: 'Ingen email tillgänglig för användaren' }, { status: 400 });
-    }
-    
-    // Hämta användarinformation från databasen
-    const dbUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: {
-        organizations: {
-          include: {
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                domain: true,
+    try {
+      // Verifierar att användaren är autentiserad
+      const { data: { user }, error } = await supabase.auth.getUser();
+      
+      console.log("[API] User check:", { 
+        userExists: !!user,
+        userId: user?.id,
+        userEmail: user?.email 
+      });
+      
+      if (error || !user) {
+        console.log("[API] Ingen användare hittades");
+        return NextResponse.json({ error: 'Ej autentiserad' }, { status: 401 });
+      }
+      
+      // Kontrollera att email finns
+      if (!user.email) {
+        console.log("[API] E-post saknas på användaren");
+        return NextResponse.json({ error: 'Ingen email tillgänglig för användaren' }, { status: 400 });
+      }
+      
+      console.log("[API] Söker användare med e-post:", user.email);
+      
+      // Hämta användarinformation från databasen
+      const dbUser = await prisma.user.findUnique({
+        where: { email: user.email },
+        include: {
+          organizations: {
+            include: {
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  domain: true,
+                },
               },
             },
           },
         },
-      },
-    });
-    
-    if (!dbUser) {
-      return NextResponse.json({ error: 'Användare hittades inte' }, { status: 404 });
+      });
+      
+      console.log("[API] Databassökning resultat:", { 
+        userFound: !!dbUser,
+        userId: dbUser?.id
+      });
+      
+      if (!dbUser) {
+        console.log("[API] Användare hittades inte i databasen");
+        return NextResponse.json({ error: 'Användare hittades inte' }, { status: 404 });
+      }
+
+      // Konvertera organisationer till rätt format
+      const organizations: Organization[] = dbUser.organizations.map(
+        (userOrg: UserOrganizationWithOrg) => ({
+          id: userOrg.organization.id,
+          name: userOrg.organization.name,
+          slug: userOrg.organization.slug,
+          domain: userOrg.organization.domain,
+          role: userOrg.role as UserRole,
+          isDefault: userOrg.isDefault,
+        })
+      );
+
+      // Hämta standardorganisationen
+      const defaultOrg = organizations.find((org) => org.isDefault);
+
+      console.log("[API] Användare hittad:", {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        organizations: organizations.length,
+        defaultOrg: defaultOrg?.name || 'Ingen',
+      });
+
+      // Skapa användarsvaret
+      const user = {
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name || '',
+        organizations: organizations,
+        currentOrganization: defaultOrg || null,
+      };
+
+      return NextResponse.json(user);
+    } catch (authError) {
+      console.error("[API] Autentiseringsfel:", authError);
+      return NextResponse.json({ error: 'Autentiseringsfel' }, { status: 500 });
     }
-
-    // Konvertera organizationUsers till enklare format för klienten
-    const organizations: Organization[] = dbUser.organizations.map((orgUser: UserOrganizationWithOrg) => ({
-      id: orgUser.organization.id,
-      name: orgUser.organization.name,
-      slug: orgUser.organization.slug,
-      domain: orgUser.organization.domain,
-      role: orgUser.role as UserRole,
-      isDefault: orgUser.isDefault,
-    }));
-
-    // Hitta standard-organisationen (om det finns)
-    const defaultOrg = organizations.find((org: Organization) => org.isDefault) || organizations[0] || null;
-    
-    // Hämta current organization från URL query parameter om det finns
-    const url = new URL(request.url);
-    const currentOrgId = url.searchParams.get('orgId');
-    
-    // Använd angiven org om den finns och användaren tillhör den, annars default
-    const currentOrganization = currentOrgId 
-      ? organizations.find((org: Organization) => org.id === currentOrgId) || defaultOrg
-      : defaultOrg;
-
-    // Hitta användarens roll i aktuell organisation
-    const currentRole = currentOrganization 
-      ? organizations.find((org: Organization) => org.id === currentOrganization.id)?.role || UserRole.MEMBER
-      : UserRole.MEMBER;
-    
-    // Returnera användarinformation med organisationer och roller
-    return NextResponse.json({
-      id: dbUser.id,
-      email: dbUser.email,
-      name: dbUser.name,
-      organizations: organizations,
-      defaultOrganization: defaultOrg,
-      currentOrganization: currentOrganization,
-      role: currentRole,
-    });
-    
   } catch (error) {
-    console.error('Error fetching current user:', error);
-    return NextResponse.json({ error: 'Ett fel uppstod' }, { status: 500 });
+    console.error("[API] Fel vid hämtning av användardata:", error);
+    return NextResponse.json(
+      { error: 'Ett fel uppstod vid hämtning av användardata' },
+      { status: 500 }
+    );
   }
 } 
