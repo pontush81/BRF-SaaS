@@ -36,8 +36,8 @@ const checkSupabaseViaProxy = async (): Promise<{reachable: boolean, error?: str
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // Öka timeout till 8 sekunder
     
-    // Anropa vår health-endpoint med detaljerade fel
-    const response = await fetch('/api/supabase-proxy/health?verbose=true', {
+    // Anropa den nya proxy-routen istället
+    const response = await fetch('/api/proxy/health?verbose=true', {
       method: 'GET',
       signal: controller.signal,
       headers: {
@@ -132,7 +132,8 @@ const getServerDiagnostics = async (): Promise<any> => {
   try {
     console.log('Hämtar server-diagnostik...');
     
-    const response = await fetch('/api/supabase-proxy/debug', {
+    // Använd den nya proxy-routen
+    const response = await fetch('/api/proxy/debug', {
       method: 'GET',
       headers: {
         'Cache-Control': 'no-cache, no-store'
@@ -530,10 +531,10 @@ export default function SignInForm() {
       
       // För produktion, använd en fetch via proxyn direkt
       try {
-        console.log('Utför proxy-baserad inloggning via /api/supabase-proxy/auth/v1/token');
+        console.log('Utför proxy-baserad inloggning via /api/proxy/auth/v1/token');
         
-        // Försök med direkta anropet först
-        const response = await fetch('/api/supabase-proxy/auth/v1/token?grant_type=password', {
+        // Försök med direkta anropet först - använd den nya proxy-routen
+        const response = await fetch('/api/proxy/auth/v1/token?grant_type=password', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

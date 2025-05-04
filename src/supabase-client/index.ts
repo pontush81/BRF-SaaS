@@ -110,52 +110,50 @@ const checkUrlConnection = async (url: string): Promise<boolean> => {
   }
 };
 
-// Skapa en anpassad fetch-funktion som använder proxy i Vercel-miljö eller produktion
-const createCustomFetch = () => {
-  // Skapa en anpassad fetch-funktion som kan hantera proxying
-  const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-    try {
-      // Konvertera URL till string om det inte redan är det
-      const urlStr = url.toString();
+// Skapa en anpassad fetch-funktion som hanterar förfrågningar annorlunda baserat på miljö
+function createCustomFetch(): typeof fetch {
+  return async (url, options = {}) => {
+    // Kontrollera om detta är en förfrågan till Supabase
+    const isSupabaseRequest = typeof url === 'string' && url.includes(SUPABASE_URL);
+    
+    // Logga anrop för debugging i utvecklingsläge
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[createCustomFetch] Request to: ${typeof url === 'string' ? url : url.toString()}`);
+      console.log(`[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}`);
+    }
+    
+    // Om vi kör på Vercel OCH det är en Supabase-förfrågan, använd vår proxy
+    if (isRunningOnVercel && isSupabaseRequest) {
+      // Ersätt Supabase URL med vår proxy
+      const originalUrl = url.toString();
+      let modifiedUrl = originalUrl;
       
-      // Kontrollera om URL:en går till Supabase
-      const isSameOrigin = typeof window !== 'undefined' && urlStr.startsWith(window.location.origin);
-      const isSupabaseUrl = SUPABASE_URL && urlStr.startsWith(SUPABASE_URL);
-      
-      // I Vercel-miljö eller produktion, använd proxy för Supabase-anrop
-      if ((shouldUseProxy || process.env.NODE_ENV === 'production') && isSupabaseUrl && !isSameOrigin) {
-        // Extrahera den del av URL:en som kommer efter Supabase-bassökvägen
-        const supabasePath = urlStr.substring(SUPABASE_URL.length);
-        
-        // Skapa den nya proxy-URL:en
-        const proxyUrl = `/api/supabase-proxy${supabasePath}`;
-        
-        console.log(`[supabase-client] Proxying request to: ${proxyUrl}`);
-        
-        // Kopiera och modifiera options för proxyanrop
-        const proxyOptions = { 
-          ...options,
-          headers: { 
-            ...options?.headers as Record<string, string>,
-            'X-Supabase-Proxy': 'true'
-          }
-        };
-        
-        // Gör anropet via proxyn
-        return fetch(proxyUrl, proxyOptions);
+      if (typeof url === 'string') {
+        // Ändra från /api/supabase-proxy till /api/proxy
+        modifiedUrl = originalUrl.replace(SUPABASE_URL, '/api/proxy');
+      } else if (url instanceof URL) {
+        // För URL objekt behöver vi manipulera sökvägen
+        modifiedUrl = `/api/proxy${url.pathname}${url.search}`;
       }
       
-      // Annars, använd vanlig fetch
-      return fetch(url, options);
+      // För debugging i development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[createCustomFetch] Proxying request via Vercel, original: ${originalUrl}, modified: ${modifiedUrl}`);
+      }
       
-    } catch (error) {
-      console.error('[supabase-client] Fetch error:', error);
-      throw error;
+      try {
+        const response = await fetch(modifiedUrl, options);
+        return response;
+      } catch (error) {
+        console.error(`[createCustomFetch] Proxy fetch error:`, error);
+        throw error;
+      }
     }
+    
+    // För alla andra förfrågningar, använd vanlig fetch
+    return fetch(url, options);
   };
-  
-  return customFetch;
-};
+}
 
 // Direct implementation to avoid circular imports
 export const createBrowserClient = () => {
