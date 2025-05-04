@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { getCurrentUserServer } from '@/lib/auth/roleUtils';
+import { getCurrentUserServer } from '@/lib/auth/server-utils';
 import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
@@ -18,11 +18,9 @@ export const metadata: Metadata = {
 export default async function Home() {
   const user = await getCurrentUserServer();
 
-  // If user is logged in and has an organization, redirect to subdomain
-  if (user?.organization?.slug) {
-    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'handbok.org';
-    const subdomain = `${user.organization.slug}.${appDomain}`;
-    redirect(`https://${subdomain}/dashboard`);
+  // Omdirigera ALLA inloggade användare till dashboard
+  if (user) {
+    redirect('/dashboard');
   }
 
   return (

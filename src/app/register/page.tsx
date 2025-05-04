@@ -1,7 +1,9 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+import { getServerSideUser } from '@/supabase-server';
 import SignUpForm from '@/components/auth/SignUpForm';
-import { createServerClient } from '@/lib/supabase';
+import prisma from '@/lib/prisma';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -9,114 +11,89 @@ export const metadata: Metadata = {
   description: 'Skapa ett nytt konto för att få tillgång till BRF-handboken',
 };
 
-// Definiera cachestrategin för denna sida
+// Ingen caching
 export const dynamic = 'force-dynamic';
-export const revalidate = 0; // Använd inga cachade värden
+export const revalidate = 0;
 
-export default async function Register({
+export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
-}) {
-  // Kontrollera om användaren redan är inloggad
-  try {
-    const supabase = createServerClient();
-    const { data } = await supabase.auth.getSession();
-
-    if (data.session) {
-      redirect('/dashboard');
-    }
-  } catch (error) {
-    console.error('Error checking session:', error);
-    // Fortsätt till registreringssidan även om vi inte kunde kontrollera sessionen
+  searchParams: {
+    type?: string;
+    invite?: string;
+    organization?: string;
   }
-
-  // Få registreringstyp från query-parametrar
-  const registrationType = searchParams.type || 'admin'; // Ändrat default till admin
-  const orgSlug = searchParams.org || '';
+}) {
+  // Kontrollera session
+  const cookieStore = cookies();
+  const user = await getServerSideUser(cookieStore);
+  
+  // Om användaren är inloggad, skicka till dashboard
+  if (user) {
+    console.log("[REGISTER] Användare redan inloggad, omdirigerar till dashboard");
+    redirect('/dashboard');
+  }
+  
+  // Hämta parametrar från URL
+  const type = searchParams.type || 'user';
+  const inviteToken = searchParams.invite;
+  const organizationSlug = searchParams.organization;
+  
+  // Hämta inbjudningsdetaljer om token finns
+  let invitation = null;
+  let organization = null;
+  
+  if (inviteToken) {
+    console.log("[REGISTER] Söker inbjudan med token:", inviteToken);
+    
+    invitation = await prisma.invitation.findUnique({
+      where: { token: inviteToken },
+      include: { organization: true }
+    });
+    
+    if (invitation) {
+      organization = invitation.organization;
+      console.log("[REGISTER] Inbjudan hittad för:", invitation.email, "till organisation:", organization.name);
+    } else {
+      console.log("[REGISTER] Ingen giltig inbjudan hittades för token:", inviteToken);
+    }
+  } else if (organizationSlug) {
+    console.log("[REGISTER] Söker organisation med slug:", organizationSlug);
+    
+    organization = await prisma.organization.findUnique({
+      where: { slug: organizationSlug }
+    });
+    
+    if (organization) {
+      console.log("[REGISTER] Organisation hittad:", organization.name);
+    } else {
+      console.log("[REGISTER] Ingen organisation hittad med slug:", organizationSlug);
+    }
+  }
   
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gray-50">
-      <div className="max-w-md w-full space-y-8 bg-white p-6 rounded-lg shadow-md">
-        {registrationType === 'admin' ? (
-          <>
-            <div className="text-center">
-              <h1 className="text-2xl font-bold">Registrera din förening</h1>
-              <p className="mt-2 text-gray-600">
-                Skapa ett administratörskonto för att köpa BRF-handboken till din förening
-              </p>
-            </div>
-            <SignUpForm isAdmin={true} />
-          </>
-        ) : (
-          <>
-            <div className="text-center">
-              <h1 className="text-2xl font-bold">Registrera som föreningsmedlem</h1>
-              {orgSlug ? (
-                <p className="mt-2 text-gray-600">
-                  Skapa ett medlemskonto för föreningen <strong>{orgSlug}</strong>
-                </p>
-              ) : (
-                <div className="mt-2 p-3 bg-yellow-50 text-yellow-700 rounded-md">
-                  <p className="font-medium">Viktigt information</p>
-                  <p className="text-sm mt-1">
-                    Du bör registrera dig direkt på din förenings webbplats: 
-                    <strong>dinförening.handbok.org</strong>
-                  </p>
-                  <p className="text-sm mt-1">
-                    Be din styrelse om den korrekta webbadressen om du är osäker.
-                  </p>
-                  <p className="text-sm mt-2">
-                    <Link href="/find-association" className="text-yellow-700 hover:underline font-medium">
-                      Hitta din förenings webbplats här →
-                    </Link>
-                  </p>
-                </div>
-              )}
-            </div>
-            {registrationType === 'member' && !orgSlug && (
-              <div className="mb-6 p-4 bg-yellow-50 text-yellow-700 rounded">
-                <p className="font-medium">OBS! Du registrerar dig på huvudplattformen</p>
-                <p className="text-sm mt-1">
-                  Medlemmar bör registrera sig direkt på sin förenings webbplats, inte här på huvudplattformen.
-                </p>
-                <p className="text-sm mt-2">
-                  <Link href="/find-association" className="text-blue-600 hover:text-blue-800 font-medium">
-                    Hitta din förenings webbplats här →
-                  </Link>
-                </p>
-              </div>
-            )}
-            <SignUpForm isAdmin={false} orgSlug={orgSlug as string} />
-          </>
-        )}
-        
-        <div className="mt-8 pt-6 border-t border-gray-200 text-center">
-          {registrationType === 'admin' ? (
-            <p className="text-sm text-gray-600">
-              Är du redan medlem i en förening som använder tjänsten?{' '}
-              <Link href={orgSlug ? `https://${orgSlug}.handbok.org/login` : `/login`} className="text-blue-600 hover:underline">
-                Logga in här
-              </Link>
-            </p>
-          ) : (
-            <p className="text-sm text-gray-600">
-              Representerar du en bostadsrättsförening?{' '}
-              <Link href="/register?type=admin" className="text-blue-600 hover:underline">
-                Registrera din förening här
-              </Link>
-            </p>
-          )}
+    <div className="flex min-h-screen flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      <div className="w-full max-w-md space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
+            {type === 'admin' 
+              ? 'Registrera din bostadsrättsförening' 
+              : invitation 
+                ? `Anslut till ${organization?.name}` 
+                : 'Skapa ett konto'}
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Eller{' '}
+            <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              logga in om du redan har ett konto
+            </Link>
+          </p>
         </div>
-      </div>
-      
-      <div className="mt-8">
-        <p className="text-center text-gray-500 text-sm">
-          Har du redan ett konto?{' '}
-          <Link href={orgSlug ? `https://${orgSlug}.handbok.org/login` : `/login`} className="text-blue-600 hover:underline">
-            Logga in
-          </Link>
-        </p>
+        
+        <SignUpForm 
+          isAdmin={type === 'admin'} 
+          orgSlug={organizationSlug || ''}
+        />
       </div>
     </div>
   );

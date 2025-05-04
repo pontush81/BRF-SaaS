@@ -1,39 +1,46 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export const metadata: Metadata = {
-  title: 'Prenumeration aktiverad',
-  description: 'Din prenumeration har aktiverats',
-};
-
 export default function SubscriptionSuccessPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const method = searchParams.get('method');
+
+  useEffect(() => {
+    // Ta bort organizationId från localStorage eftersom det inte längre behövs
+    try {
+      localStorage.removeItem('currentOrganizationId');
+    } catch (error) {
+      console.warn('Could not access localStorage, continuing anyway:', error);
+    }
+  }, []);
+
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 text-center">
-      <div className="rounded-full w-16 h-16 bg-green-100 p-2 flex items-center justify-center mx-auto mb-6">
-        <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
+    <div className="container mx-auto max-w-3xl py-10 px-6">
+      <div className="bg-white p-8 rounded-lg shadow-lg text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Tack för din prenumeration!</h1>
+        
+        {method === 'invoice' ? (
+          <div className="mb-6 text-lg text-gray-700">
+            <p>Din faktura kommer att skickas inom 24 timmar.</p>
+            <p className="mt-2">När fakturan är betald kommer din prenumeration att aktiveras automatiskt.</p>
+          </div>
+        ) : (
+          <div className="mb-6 text-lg text-gray-700">
+            <p>Din betalning har genomförts och din prenumeration är nu aktiv.</p>
+            <p className="mt-2">Du kan nu börja använda alla funktioner i BRF-handboken.</p>
+          </div>
+        )}
+        
+        <Link href="/dashboard">
+          <button className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors">
+            Gå till dashboard
+          </button>
+        </Link>
       </div>
-      
-      <h1 className="text-3xl font-bold mb-4">Tack för din prenumeration!</h1>
-      
-      <p className="text-lg text-gray-700 mb-8">
-        Din prenumeration har aktiverats framgångsrikt. Du har nu tillgång till alla funktioner i din valda plan.
-      </p>
-      
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold text-blue-800 mb-3">Din 30-dagars gratisperiod har börjat</h2>
-        <p className="text-gray-700 mb-0">
-          Du kommer inte att bli debiterad förrän efter din gratisperiod. Du kan när som helst ändra eller avsluta din prenumeration i inställningarna.
-        </p>
-      </div>
-      
-      <Link 
-        href="/"
-        className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-md"
-      >
-        Gå till startsidan
-      </Link>
     </div>
   );
 } 

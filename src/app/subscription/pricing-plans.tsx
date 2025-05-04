@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 import { PLAN_PRICES } from '@/lib/stripe';
 
@@ -80,12 +80,30 @@ export default function PricingPlans() {
   });
   
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
   // Detect environment for debugging
   const isDev = process.env.NODE_ENV === 'development';
   const isStaging = process.env.APP_ENV === 'staging';
   const isProd = process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 'staging';
+
+  // Function to get organization ID from query param or localStorage
+  const getOrganizationId = () => {
+    // Try to get from searchParams first
+    const orgIdFromQuery = searchParams.get('organizationId');
+    if (orgIdFromQuery) {
+      return orgIdFromQuery;
+    }
+    
+    // If not in query, try localStorage but handle errors
+    try {
+      return localStorage.getItem('currentOrganizationId');
+    } catch (error) {
+      console.warn('Could not access localStorage:', error);
+      return null;
+    }
+  };
 
   const handlePlanSelect = (plan: PlanType) => {
     setSelectedPlan(plan);
@@ -102,7 +120,7 @@ export default function PricingPlans() {
 
       // Get current organization ID from context or localStorage
       // This is a placeholder - you need to implement how you get the current organization
-      const organizationId = localStorage.getItem('currentOrganizationId');
+      const organizationId = getOrganizationId();
       
       if (!organizationId) {
         toast({
@@ -159,7 +177,7 @@ export default function PricingPlans() {
       setLoading(selectedPlan);
       
       // Get current organization ID
-      const organizationId = localStorage.getItem('currentOrganizationId');
+      const organizationId = getOrganizationId();
       
       if (!organizationId) {
         toast({

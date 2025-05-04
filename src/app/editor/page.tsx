@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
-import { getCurrentUserServer, UserRole, hasRole } from '@/lib/auth/roleUtils'
+import { getCurrentUserServer } from '@/lib/auth/server-utils'
+import { UserRole, hasRole } from '@/lib/auth/roleUtils'
 import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import Link from 'next/link'

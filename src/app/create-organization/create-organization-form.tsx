@@ -75,9 +75,15 @@ export default function CreateOrganizationForm() {
       // Visa framgångsmeddelande och dirigera om
       setSuccess(true);
       
-      // Omdirigera till den nya organisationens sida efter 2 sekunder
+      // Omdirigera till prenumerationssidan efter 2 sekunder
       setTimeout(() => {
-        router.push(`/${data.slug}`);
+        // Försök spara organization ID i localStorage, men fånga eventuella fel
+        try {
+          localStorage.setItem('currentOrganizationId', data.id);
+        } catch (error) {
+          console.warn('Could not save to localStorage, continuing anyway:', error);
+        }
+        router.push('/subscription');
       }, 2000);
       
     } catch (error) {

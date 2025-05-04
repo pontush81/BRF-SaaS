@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { getCurrentUserServer } from '@/lib/auth/roleUtils'
+import { getCurrentUserServer } from '@/lib/auth/server-utils'
 import { redirect } from 'next/navigation'
 import JoinOrganizationForm from '@/app/join-organization/JoinOrganizationForm'
 

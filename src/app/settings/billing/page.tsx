@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { cookies } from 'next/headers';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/supabase-server';
 import { hasActiveSubscription } from '@/lib/stripe';
 import ManageSubscription from './manage-subscription';
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 async function getCurrentOrganization() {
   const cookieStore = cookies();
-  const supabase = createClient();
+  const supabase = createServerClient(cookieStore);
   
   // Get current user
   const { data: { user } } = await supabase.auth.getUser();
