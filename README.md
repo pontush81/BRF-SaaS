@@ -273,34 +273,83 @@ After updating, your email confirmation links will point to the correct domain i
 
 If users report confirmation emails with incorrect links (e.g., pointing to `localhost:3000`), follow the steps above to fix the issue in the Supabase Dashboard.
 
+## Stripe Integration och Betalningshantering
+
+Projektet använder Stripe för prenumerationer och betalningshantering. För att utveckla och testa Stripe-funktionalitet lokalt krävs vissa förberedelser.
+
+### Förutsättningar för Stripe-utveckling
+
+1. **Stripe CLI**:
+   - Installera Stripe CLI för att testa webhooks lokalt
+   - Mac: `brew install stripe/stripe-cli/stripe`
+   - Windows: Ladda ner från [Stripe CLI](https://stripe.com/docs/stripe-cli)
+   - Linux: Se [Stripe CLI installation](https://stripe.com/docs/stripe-cli#install)
+
+2. **Logga in på Stripe**:
+   ```bash
+   stripe login
+   ```
+   Följ instruktionerna för att koppla ihop CLI med ditt Stripe-konto.
+
+3. **Lyssna på Webhooks** för att vidarebefordra events till din lokala utvecklingsmiljö:
+   ```bash
+   stripe listen --forward-to http://localhost:3000/api/stripe/webhook
+   ```
+   Detta startar en lyssnare som tar emot events från Stripe och skickar dem till din lokala webhook-endpoint.
+
+### Miljövariabler för Stripe
+
+För att Stripe ska fungera behöver du dessa variabler i din `.env.development` eller `.env.local` fil:
+
+```
+# Stripe - Development (Test Keys)
+STRIPE_SECRET_KEY="sk_test_ditt_test_api_key"
+STRIPE_WEBHOOK_SECRET="whsec_din_webhook_secret"
+STRIPE_PORTAL_CONFIGURATION_ID="bpc_din_portal_konfigurations_id" eller "test_..."
+STRIPE_PRICE_ID_BASIC_MONTHLY="price_id_for_basic_monthly"
+STRIPE_PRICE_ID_STANDARD_MONTHLY="price_id_for_standard_monthly"
+STRIPE_PRICE_ID_PREMIUM_MONTHLY="price_id_for_premium_monthly"
+STRIPE_PRICE_ID_BASIC_YEARLY="price_id_for_basic_yearly"
+STRIPE_PRICE_ID_STANDARD_YEARLY="price_id_for_standard_yearly"
+STRIPE_PRICE_ID_PREMIUM_YEARLY="price_id_for_premium_yearly"
+```
+
+### Testa Betalningsflödet
+
+För att testa det kompletta betalningsflödet:
+
+1. Starta utvecklingsservern: `npm run dev`
+2. Starta webhook-lyssnaren i en annan terminal: `stripe listen --forward-to http://localhost:3000/api/stripe/webhook`
+3. Navigera till prenumerationssidan i din app
+4. Använd Stripe testkortnummer för att genomföra en testbetalning:
+   - Kort som lyckas: `4242 4242 4242 4242`
+   - Kort som kräver 3D Secure: `4000 0000 0000 3220`
+   - Kort som avvisas: `4000 0000 0000 9995`
+   - [Fler testkort](https://stripe.com/docs/testing#cards)
+
+5. I terminalen med webhook-lyssnaren bör du se events som `checkout.session.completed` och `invoice.payment_succeeded`
+
+### Stripe-schemat i Supabase
+
+Kunden skapas automatiskt i Stripe när en organization registreras. När en prenumeration köps, sparas denna i `subscription`-tabellen i databasen med följande Stripe-specifika fält:
+
+- `stripeCustomerId` - ID för kunden i Stripe (börjar med "cus_")
+- `stripeSubscriptionId` - ID för prenumerationen i Stripe (börjar med "sub_")
+- `stripePriceId` - ID för priset/planen i Stripe (börjar med "price_")
+
+### Miljöspecifika Konfigurationer
+
+- **Development**: Använder test-nycklar och utvecklingsmiljön på Stripe
+- **Staging**: Använder test-nycklar men en separat webhook och portal-configuration
+- **Production**: Ska använda live-nycklar och produktionsmiljön på Stripe
+
+### Felsökning för Stripe
+
+Om du stöter på problem med Stripe-integrationen:
+
+1. Kontrollera Stripe-händelser i [Stripe Dashboard](https://dashboard.stripe.com/test/events)
+2. Verifiera att webhook-hemligheten är korrekt i din `.env`-fil
+3. Säkerställ att webhook-lyssnaren körs och är korrekt konfigurerad
+4. Granska fejkade/misslyckade betalningar i [Stripe Dashboard](https://dashboard.stripe.com/test/payments)
+
 ## Säker hantering av API-nycklar
-
-För att säkerställa säkerheten i applikationen är det viktigt att hantera API-nycklar och hemligheter på ett säkert sätt:
-
-### Stripe API-nycklar
-
-Stripe API-nycklar bör hanteras med särskild försiktighet:
-
-1. **Använd miljövariabler**: Spara aldrig API-nycklar direkt i koden. Använd `.env`-filer för utveckling och säkra miljövariabler i produktionsmiljön.
-
-2. **Skydda både testnycklar och produktionsnycklar**: Även om testnycklar (`sk_test_...`) inte kan användas för riktiga betalningar, bör de hanteras som känsliga.
-
-3. **Dela aldrig nycklar i klartext**: Använd säkra kanaler för att dela nycklar med teammedlemmar. Dela aldrig nycklar via e-post, chatt eller versionshanteringssystem.
-
-4. **Rotera nycklar regelbundet**: Byt ut alla API-nycklar regelbundet, särskilt produktionsnycklarna.
-
-5. **Begränsade nycklar**: Använd "restricted keys" i Stripe där möjligt för att begränsa behörigheter.
-
-6. **Om en nyckel läcks**:
-   - Logga in på Stripe Dashboard → Developers → API Keys
-   - Klicka på "Roll key" för att skapa en ny nyckel
-   - Uppdatera alla miljöer med den nya nyckeln
-   - Undersök om obehörig åtkomst kan ha skett
-
-### Exempel på .env-format
-
-```
-# Stripe API (använd dessa formatexempel, fyll INTE i riktiga nycklar här)
-STRIPE_SECRET_KEY="sk_test_your_stripe_test_key" # Testmiljö
-STRIPE_SECRET_KEY="sk_live_your_stripe_live_key" # Produktionsmiljö
-```
