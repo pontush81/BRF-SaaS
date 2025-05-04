@@ -223,7 +223,7 @@ export default function DiagnosticsPage() {
                   <Title order={4}>Miljöinformation</Title>
                 </Accordion.Control>
                 <Accordion.Panel>
-                  <List spacing="sm">
+                  <List gap="sm">
                     <List.Item>
                       <Text span fw={500}>Node miljö:</Text> {data.environment.nodeEnv}
                     </List.Item>
@@ -249,7 +249,7 @@ export default function DiagnosticsPage() {
                 </Accordion.Control>
                 <Accordion.Panel>
                   {clientDiagnostics ? (
-                    <List spacing="sm">
+                    <List gap="sm">
                       <List.Item>
                         <Group>
                           <Text fw={500}>Klient Supabase-anslutning:</Text> 
