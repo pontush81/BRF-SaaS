@@ -54,12 +54,17 @@ BRF-SaaS är en molnbaserad plattform som gör det möjligt för flera bostadsr�
    - Kopiera anslutningssträngarna till din `.env`-fil
    - Kör `npx prisma db push` för att skapa databasstrukturen
 
-5. Starta utvecklingsservern:
+5. Fylla databasen med testdata:
+   ```bash
+   npm run prisma:seed
+   ```
+
+6. Starta utvecklingsservern:
    ```bash
    npm run dev
    ```
 
-6. Öppna [http://localhost:3000](http://localhost:3000) i din webbläsare.
+7. Öppna [http://localhost:3000](http://localhost:3000) i din webbläsare.
 
 ### Miljövariabler
 
@@ -93,8 +98,15 @@ NEXTAUTH_SECRET=a-random-string-for-development-only
 ```
 /src
   /app                  # Next.js App Router
+    /api                # API-endpoints
+      /dev              # Utvecklingsspecifika API-endpoints
+    /dev-tools          # Utvecklingsverktyg 
   /components           # UI-komponenter
   /lib                  # Bibliotek och hjälpfunktioner
+    /prisma.ts          # Prisma-klient setup
+    /mock-control.ts    # Kontroll av mockad data
+    /tenant-utils.ts    # Tenant-isolering för Prisma
+    /env.ts             # Miljöhantering
   /middleware           # Middleware för autentisering och multi-tenancy
   /utils                # Verktyg och hjälpfunktioner
   /hooks                # React hooks
@@ -103,9 +115,51 @@ NEXTAUTH_SECRET=a-random-string-for-development-only
   /styles               # CSS och stilar
   /types                # TypeScript typdefinitioner
   /config               # Konfigurationsfiler
+  /scripts              # Utility scripts
+    /sync-schema.ts     # Schema-synkronisering
 /prisma
-  schema.prisma        # Databasschema för Prisma ORM
+  schema.prisma         # Databasschema för Prisma ORM
+  schema.staging.prisma # Staging databasschema
+  seed.ts               # Testdata för lokal utveckling
 ```
+
+## Utvecklingsverktyg
+
+Projektet innehåller flera verktyg för utveckling och testning.
+
+### Mock-läge för utveckling
+
+Vi använder mock-data för att underlätta utveckling utan beroende till externa tjänster:
+
+- En global mock-indikator visas alltid i utvecklingsmiljön
+- Använd `/dev-tools` för att kontrollera mock-status och hantera mock-data
+- Mock-data används automatiskt i utvecklingsmiljön, aldrig i produktion
+
+### Dev-Tools-sidan
+
+Besök `/dev-tools` i utvecklingsmiljön för att:
+
+- Se och hantera databasanslutningar
+- Växla mellan mockad och riktig data
+- Simulera inloggning/utloggning
+- Återställa utvecklingsdatabasen med testdata
+
+### Seed-script för testdata
+
+Vi har implementerat ett omfattande seed-script som fyller databasen med testdata:
+
+```bash
+# Fylla databasen med testdata
+npm run prisma:seed
+
+# Återställ databasen och skapa ny testdata
+npm run db:reset
+```
+
+Detta är särskilt användbart för att:
+- Testa multi-tenant funktionalitet med realistisk data
+- Undvika att behöva skapa testdata manuellt
+- Säkerställa att alla deltar med samma datauppsättning
 
 ## Databashantering
 
@@ -114,6 +168,53 @@ Projektet använder Prisma ORM för att hantera databasen. Några viktiga komman
 - `npx prisma db push` - Skapa/uppdatera databas från schema
 - `npx prisma generate` - Generera Prisma Client från schema
 - `npx prisma studio` - Öppna Prisma Studio för att utforska databasen
+- `npm run prisma:seed` - Fyll databasen med testdata
+
+### Schema-synkronisering
+
+För att hålla databasschemat synkroniserat mellan miljöer:
+
+```bash
+# Synkronisera lokalt schema till staging
+npm run schema:push:staging
+
+# Hämta schema från staging till lokal miljö
+npm run schema:pull:staging
+
+# Synkronisera lokalt schema till produktion
+npm run schema:push:prod
+
+# Hämta schema från produktion till lokal miljö
+npm run schema:pull:prod
+```
+
+## Tenant-isolation
+
+Vi använder en robust tenant-isolationsmodell som säkerställer att data är korrekt isolerad:
+
+- I utvecklingsmiljö: Enkel access till all data för snabb utveckling
+- I staging/produktion: Strikt tenant-isolation genom Prisma-middleware och Supabase RLS
+
+För API-endpoints kan du använda:
+
+```typescript
+import { withTenantIsolation } from '@/lib/tenant-utils';
+
+export default withTenantIsolation(async function handler(req, res) {
+  const { prisma, organizationId } = req;
+  // prisma-klienten är nu automatiskt tenant-isolerad
+});
+```
+
+För klient-komponenter eller serverfunktioner:
+
+```typescript
+import { createTenantPrismaClient } from '@/lib/tenant-utils';
+
+const organizationId = '123';
+const prisma = createTenantPrismaClient(organizationId);
+// Nu filtreras alla queries automatiskt baserat på organizationId
+```
 
 ## Utvecklingsflöde
 
@@ -142,6 +243,7 @@ Projektet använder separata miljöer och databasschemata för utveckling, testn
 - `.env.local` används för lokal utveckling
 - Kör utvecklingsservern med `npm run dev`
 - Loggar är aktiverade för debugging
+- Mock-data kan användas för snabb utveckling
 - Använder `dev`-schemat i databasen
 - Kan inte påverka produktionsdata
 
@@ -163,6 +265,7 @@ Projektet använder separata miljöer och databasschemata för utveckling, testn
 - `.env.production` används för produktionsmiljön
 - Kör med `npm run build && npm start`
 - Minimala loggar för prestanda
+- Mock-data inaktiveras automatiskt
 - Använder `public`-schemat i databasen (standard)
 - Skyddsmekanism förhindrar utveckling/test-verktyg från att påverka produktionsdata
 
@@ -214,6 +317,40 @@ if (isProductionDatabase()) {
 }
 ```
 
+## Test-mode i utvecklingsmiljö
+
+För att hantera mockad data säkert:
+
+```typescript
+import { isMockModeEnabled, enableMockMode, disableMockMode } from '@/lib/mock-control';
+
+// Kontrollera om mock-läge är aktivt
+if (isMockModeEnabled()) {
+  // Använd mockad data
+} else {
+  // Använd riktig data
+}
+```
+
+I React-komponenter:
+
+```typescript
+import { useMockMode } from '@/lib/mock-control';
+
+function MyComponent() {
+  const { mockEnabled, enableMock, disableMock } = useMockMode();
+  
+  return (
+    <div>
+      {mockEnabled ? 'Mock aktiverat' : 'Mock inaktiverat'}
+      <button onClick={mockEnabled ? disableMock : enableMock}>
+        {mockEnabled ? 'Inaktivera' : 'Aktivera'} mock
+      </button>
+    </div>
+  );
+}
+```
+
 ## Testning
 
 För att testdata inte ska blandas med produktionsdata följer vi dessa riktlinjer:
@@ -239,39 +376,16 @@ npm run test:watch
 
 ## Email Confirmation Links
 
-When a user registers, Supabase sends a confirmation email with a link back to your application. By default, these links use the Supabase Site URL configuration which must be updated for each environment.
+När en användare registrerar sig skickar Supabase ett bekräftelsemail med en länk tillbaka till din applikation. Som standard använder dessa länkar Supabase Site URL-konfiguration som måste uppdateras för varje miljö.
 
-### Fix Email Confirmation Links
+### Fixa Email Confirmation Links
 
-The confirmation emails currently have links pointing to `localhost:3000` instead of your production domain. To fix this, run the script:
+Bekräftelsemejlen har för närvarande länkar som pekar på `localhost:3000` istället för din produktionsdomän. För att fixa detta, kör scriptet:
 
 ```bash
-# For production
+# För produktion
 npm run update-site-url:prod
-
-# For staging 
-npm run update-site-url:staging
-
-# For development
-npm run update-site-url:dev
 ```
-
-This will display instructions for configuring Supabase properly:
-
-1. Login to [Supabase Dashboard](https://app.supabase.com)
-2. Select your project
-3. Go to Authentication -> URL Configuration
-4. Update the "Site URL" field to match your environment URL:
-   - Production: `https://www.handbok.org`
-   - Staging: Your staging URL
-   - Development: `http://localhost:3000`
-5. Click "Save" to apply changes
-
-After updating, your email confirmation links will point to the correct domain instead of localhost.
-
-### Troubleshooting Email Confirmations
-
-If users report confirmation emails with incorrect links (e.g., pointing to `localhost:3000`), follow the steps above to fix the issue in the Supabase Dashboard.
 
 ## Stripe Integration och Betalningshantering
 
@@ -343,13 +457,71 @@ Kunden skapas automatiskt i Stripe när en organization registreras. När en pre
 - **Staging**: Använder test-nycklar men en separat webhook och portal-configuration
 - **Production**: Ska använda live-nycklar och produktionsmiljön på Stripe
 
-### Felsökning för Stripe
+### Konfigurera Middleware för Prenumerationskontroll
 
-Om du stöter på problem med Stripe-integrationen:
+Systemet använder en middleware för att kontrollera prenumerationsstatus och omdirigera användare till prenumerationssidan om de försöker nå skyddade resurser utan aktiv prenumeration.
 
-1. Kontrollera Stripe-händelser i [Stripe Dashboard](https://dashboard.stripe.com/test/events)
-2. Verifiera att webhook-hemligheten är korrekt i din `.env`-fil
-3. Säkerställ att webhook-lyssnaren körs och är korrekt konfigurerad
-4. Granska fejkade/misslyckade betalningar i [Stripe Dashboard](https://dashboard.stripe.com/test/payments)
+För att aktivera prenumerationskontroll i alla miljöer:
+
+1. **Standardkonfiguration**:
+   ```bash
+   # För mindre strikt kontroll i utvecklingsmiljön
+   # Lägg till i .env.development
+   STRICT_SUBSCRIPTION_CHECK=false
+   
+   # För strikt kontroll i staging/produktion
+   # Lägg till i .env.staging och .env.production
+   STRICT_SUBSCRIPTION_CHECK=true
+   ```
+
+2. **Testa middleware**: Du kan testa hur middleware fungerar i utvecklingsmiljön genom att ställa in:
+   ```bash
+   # Lägg till i .env.local för att testa
+   STRICT_SUBSCRIPTION_CHECK=true
+   ```
+
+### Onboarding-flödet för nya föreningar
+
+Flödet för att skapa en ny förening och aktivera prenumeration ser ut så här:
+
+1. **Användarregistrering**: Användaren registrerar sig på `/register`
+2. **Skapa förening**: Användaren skapar en BRF på `/create-organization`
+3. **Välj prenumeration**: Användaren omdirigeras automatiskt till `/subscription` för att välja plan
+4. **Betalning**: Användaren genomför betalning via Stripe (faktura eller kort)
+5. **Framgång**: Användaren kommer till `/subscription/success` och kan sedan använda systemet
+
+Middleware säkerställer att användaren inte kan kringgå prenumerationssteget.
+
+### Felsökning för Stripe och Onboarding
+
+Om du stöter på problem med Stripe-integrationen eller onboarding av kunder, kontrollera följande:
+
+1. **"Access to storage is not allowed from this context" fel**:
+   - Detta kan uppstå i utvecklingsmiljön på grund av cookies eller localStorage-restriktioner
+   - Lösning: Använd URL-parametrar istället för localStorage genom att lägga till `?organizationId=[DITT_ORG_ID]` till prenumerationssidan
+   - Exempel: `http://localhost:3000/subscription?organizationId=123`
+
+2. **Favicon 500-fel**:
+   - Detta kan uppstå om favicon.ico inte finns i public-mappen
+   - Lösning: Se till att en giltig favicon.ico finns i public/-mappen
+   - Alternativt: Omstarta Next.js-servern helt
+
+3. **Fastnar i redirect-loop mellan login och dashboard**:
+   - Detta kan bero på middleware eller auth-relaterade problem
+   - Tillfällig lösning: Inaktivera middleware i utvecklingsläget (redan gjort)
+   - Permanent lösning: Felsök auth-logiken och säkerställ att localStorage-anrop är wrapped i try-catch
+
+4. **Problem med Stripe webhook-lyssnaren**:
+   - Se till att Stripe CLI är installerat och körs med `npm run stripe:webhook`
+   - Kontrollera att webhook-hemligheten är korrekt i .env-filen
+
+5. **Test av betalningsflödet**:
+   - Använd testkortnummer när du testar betalningsflödet, se avsnittet om [Testa Betalningsflödet](#testa-betalningsflödet)
+   - Kontrollera webhook-händelser i Stripe Dashboard
+
+För en komplett översikt av Stripe-integrationen, använd `verify:onboarding`-skriptet:
+```bash
+npm run verify:onboarding
+```
 
 ## Säker hantering av API-nycklar

@@ -78,7 +78,7 @@ model Page {
 - **Section Manager**: Interface to create/edit handbook sections
 - **Page Editor**: Rich text editor for creating handbook pages
   - Markdown or WYSIWYG editor
-  - Image upload functionality
+  - Image and fileupload functionality
   - Version history
 
 #### 2. Member Viewing Interface
