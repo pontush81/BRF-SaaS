@@ -112,28 +112,38 @@ const checkUrlConnection = async (url: string): Promise<boolean> => {
 
 // Skapa en anpassad fetch-funktion som hanterar förfrågningar annorlunda baserat på miljö
 function createCustomFetch(): typeof fetch {
-  return async (url, options = {}) => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Konvertera URL till string för kontroll
+    const urlStr = input instanceof URL ? input.toString() : typeof input === 'string' ? input : input.url;
+    
     // Kontrollera om detta är en förfrågan till Supabase
-    const isSupabaseRequest = typeof url === 'string' && url.includes(SUPABASE_URL);
+    const isSupabaseRequest = urlStr.includes(SUPABASE_URL);
     
     // Logga anrop för debugging i utvecklingsläge
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[createCustomFetch] Request to: ${typeof url === 'string' ? url : url.toString()}`);
+      console.log(`[createCustomFetch] Request to: ${urlStr}`);
       console.log(`[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}`);
     }
     
     // Om vi kör på Vercel OCH det är en Supabase-förfrågan, använd vår proxy
     if (isRunningOnVercel && isSupabaseRequest) {
       // Ersätt Supabase URL med vår proxy
-      const originalUrl = url.toString();
-      let modifiedUrl = originalUrl;
+      const originalUrl = urlStr;
+      let modifiedUrl: string;
       
-      if (typeof url === 'string') {
+      if (typeof input === 'string') {
         // Ändra från /api/supabase-proxy till /api/proxy
         modifiedUrl = originalUrl.replace(SUPABASE_URL, '/api/proxy');
-      } else if (url && typeof url === 'object' && 'pathname' in url && 'search' in url) {
-        // För URL-liknande objekt behöver vi manipulera sökvägen
-        modifiedUrl = `/api/proxy${url.pathname}${url.search}`;
+      } else if (input instanceof URL) {
+        // För URL-objekt
+        modifiedUrl = `/api/proxy${input.pathname}${input.search}`;
+      } else if ('url' in input && 'pathname' in input && 'search' in input) {
+        // För Request-objekt
+        modifiedUrl = `/api/proxy${input.pathname}${input.search}`;
+      } else {
+        // Fallback för andra typer (detta bör inte behövas med korrekt typning)
+        modifiedUrl = `/api/proxy`;
+        console.warn('[createCustomFetch] Oväntad input-typ:', input);
       }
       
       // För debugging i development mode
@@ -142,7 +152,7 @@ function createCustomFetch(): typeof fetch {
       }
       
       try {
-        const response = await fetch(modifiedUrl, options);
+        const response = await fetch(modifiedUrl, init);
         return response;
       } catch (error) {
         console.error(`[createCustomFetch] Proxy fetch error:`, error);
@@ -151,7 +161,7 @@ function createCustomFetch(): typeof fetch {
     }
     
     // För alla andra förfrågningar, använd vanlig fetch
-    return fetch(url, options);
+    return fetch(input, init);
   };
 }
 
