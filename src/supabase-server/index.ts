@@ -76,34 +76,36 @@ export const createServerClient = (cookieStore?: any) => {
     // Create client with cookies if available
     if (cookieStore) {
       return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: authConfig,
+        auth: {
+          ...authConfig,
+          cookies: {
+            get(name) {
+              try {
+                return cookieStore.get(name)?.value;
+              } catch (error) {
+                console.error("Error getting cookie:", error);
+                return undefined;
+              }
+            },
+            set(name, value, options) {
+              try {
+                cookieStore.set({ name, value, ...options });
+              } catch (error) {
+                console.warn('Cookies can only be set in route handlers or Server Actions');
+              }
+            },
+            remove(name, options) {
+              try {
+                cookieStore.set({ name, value: '', ...options, maxAge: 0 });
+              } catch (error) {
+                console.warn('Cookies can only be removed in route handlers or Server Actions');
+              }
+            }
+          }
+        },
         global: {
           headers: {
             'X-Client-Info': 'supabase-js-server/nextjs'
-          }
-        },
-        cookies: {
-          get(name) {
-            try {
-              return cookieStore.get(name)?.value;
-            } catch (error) {
-              console.error("Error getting cookie:", error);
-              return undefined;
-            }
-          },
-          set(name, value, options) {
-            try {
-              cookieStore.set({ name, value, ...options });
-            } catch (error) {
-              console.warn('Cookies can only be set in route handlers or Server Actions');
-            }
-          },
-          remove(name, options) {
-            try {
-              cookieStore.set({ name, value: '', ...options, maxAge: 0 });
-            } catch (error) {
-              console.warn('Cookies can only be removed in route handlers or Server Actions');
-            }
           }
         }
       });
