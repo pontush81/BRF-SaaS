@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrganizationById } from '@/lib/organizations';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@/supabase-server';
 
 // Get organization by ID
 export async function GET(
@@ -8,7 +9,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   // Verify authentication
-  const supabase = createClient();
+  const supabase = createServerClient(cookies());
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {

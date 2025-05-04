@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@/supabase-server';
 import { createCustomerPortalSession } from '@/lib/stripe';
 
 // Detect environment
@@ -10,7 +11,7 @@ const isProd = process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 
 export async function POST(request: NextRequest) {
   try {
     // Verify authentication
-    const supabase = createClient();
+    const supabase = createServerClient(cookies());
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
