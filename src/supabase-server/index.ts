@@ -29,39 +29,38 @@ export const createServerClient = (cookieStore?: any) => {
         }
       });
       
-      // Add mocked auth methods for development
-      mockClient.auth = {
-        ...mockClient.auth,
-        // Match exact signature with optional jwt parameter
-        getUser: async (jwt?: string): Promise<UserResponse> => {
-          console.log('[Server] Mock getUser called', jwt ? 'with JWT' : 'without JWT');
+      // Store the original auth object
+      const origAuth = mockClient.auth;
+      
+      // Override only the specific method we need for mocking
+      origAuth.getUser = async (jwt?: string): Promise<UserResponse> => {
+        console.log('[Server] Mock getUser called', jwt ? 'with JWT' : 'without JWT');
+        
+        const mockCookies = cookieStore ? 
+          Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
+          {};
+        
+        if (mockCookies['supabase-dev-auth'] === 'true') {
+          // Create a properly typed mock user that matches Supabase User type
+          const mockUser: User = {
+            id: '12345-mock-server-user-id',
+            email: 'dev@example.com',
+            app_metadata: { provider: 'email' },
+            user_metadata: { name: 'Server Utvecklare' },
+            aud: 'authenticated',
+            created_at: new Date().toISOString(),
+            role: 'authenticated',
+            updated_at: new Date().toISOString(),
+            phone: null
+          };
           
-          const mockCookies = cookieStore ? 
-            Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
-            {};
-          
-          if (mockCookies['supabase-dev-auth'] === 'true') {
-            // Create a properly typed mock user that matches Supabase User type
-            const mockUser: User = {
-              id: '12345-mock-server-user-id',
-              email: 'dev@example.com',
-              app_metadata: { provider: 'email' },
-              user_metadata: { name: 'Server Utvecklare' },
-              aud: 'authenticated',
-              created_at: new Date().toISOString(),
-              role: 'authenticated',
-              updated_at: new Date().toISOString(),
-              phone: null
-            };
-            
-            return { 
-              data: { user: mockUser }, 
-              error: null 
-            };
-          }
-          
-          return { data: { user: null }, error: null };
+          return { 
+            data: { user: mockUser }, 
+            error: null 
+          };
         }
+        
+        return { data: { user: null }, error: null };
       };
       
       return mockClient;

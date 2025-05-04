@@ -49,60 +49,63 @@ export const createBrowserClient = () => {
         const hasMockCookie = document.cookie.includes('supabase-dev-auth=true');
         
         if (hasMockCookie) {
-          // Add mock methods for development
+          // Store the original auth object and its methods
           const origAuth = client.auth;
-          client.auth = {
-            ...origAuth,
-            // Match exact signature with optional jwt parameter
-            getUser: async (jwt?: string): Promise<UserResponse> => {
-              console.log('Mock getUser called', jwt ? 'with JWT' : 'without JWT');
-              
-              // Create a properly typed mock user that matches Supabase User type
-              const mockUser: User = {
-                id: '12345-mock-user-id',
-                email: 'dev@example.com',
-                app_metadata: { provider: 'email' },
-                user_metadata: { name: 'Utvecklaren' },
-                aud: 'authenticated',
-                created_at: new Date().toISOString(),
-                role: 'authenticated',
-                updated_at: new Date().toISOString(),
-                phone: null
-              };
-              
-              return { 
-                data: { user: mockUser }, 
-                error: null 
-              };
-            },
-            // Match the exact signature
-            getSession: async (): Promise<AuthResponse> => {
-              // Create a properly typed mock user that matches Supabase User type
-              const mockUser: User = {
-                id: '12345-mock-user-id',
-                email: 'dev@example.com',
-                app_metadata: { provider: 'email' },
-                user_metadata: { name: 'Utvecklaren' },
-                aud: 'authenticated',
-                created_at: new Date().toISOString(),
-                role: 'authenticated',
-                updated_at: new Date().toISOString(),
-                phone: null
-              };
-              
-              const mockSession: Session = {
-                access_token: 'mock-token',
-                refresh_token: 'mock-refresh-token',
-                expires_in: 3600,
-                token_type: 'bearer',
-                user: mockUser
-              };
-              
-              return { 
-                data: { session: mockSession }, 
-                error: null 
-              };
-            }
+          
+          // Instead of replacing the entire auth object, store the original methods
+          // and override only the ones we need for mocking
+          const origGetUser = origAuth.getUser;
+          const origGetSession = origAuth.getSession;
+          
+          // Override specific methods while keeping all other original methods
+          origAuth.getUser = async (jwt?: string): Promise<UserResponse> => {
+            console.log('Mock getUser called', jwt ? 'with JWT' : 'without JWT');
+            
+            // Create a properly typed mock user that matches Supabase User type
+            const mockUser: User = {
+              id: '12345-mock-user-id',
+              email: 'dev@example.com',
+              app_metadata: { provider: 'email' },
+              user_metadata: { name: 'Utvecklaren' },
+              aud: 'authenticated',
+              created_at: new Date().toISOString(),
+              role: 'authenticated',
+              updated_at: new Date().toISOString(),
+              phone: null
+            };
+            
+            return { 
+              data: { user: mockUser }, 
+              error: null 
+            };
+          };
+          
+          origAuth.getSession = async (): Promise<AuthResponse> => {
+            // Create a properly typed mock user that matches Supabase User type
+            const mockUser: User = {
+              id: '12345-mock-user-id',
+              email: 'dev@example.com',
+              app_metadata: { provider: 'email' },
+              user_metadata: { name: 'Utvecklaren' },
+              aud: 'authenticated',
+              created_at: new Date().toISOString(),
+              role: 'authenticated',
+              updated_at: new Date().toISOString(),
+              phone: null
+            };
+            
+            const mockSession: Session = {
+              access_token: 'mock-token',
+              refresh_token: 'mock-refresh-token',
+              expires_in: 3600,
+              token_type: 'bearer',
+              user: mockUser
+            };
+            
+            return { 
+              data: { session: mockSession }, 
+              error: null 
+            };
           };
         }
       }
