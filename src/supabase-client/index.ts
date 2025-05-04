@@ -11,11 +11,15 @@ import type { User, UserResponse, Session, AuthResponse } from '@supabase/supaba
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const isDevelopment = process.env.NODE_ENV === 'development';
-const isVercel = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL;
+const isDevelopment = process.env.NODE_ENV !== 'production';
+// Förbättra Vercel-detektering och inkludera även browser-kontroll
+const isVercel = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL || process.env.VERCEL;
 
-// Kontrollera om vi är i Vercel-miljö
-const isRunningOnVercel = !!isVercel;
+// Kontrollera om vi är i Vercel-miljö eller i produktion (men inte i utveckling)
+const isRunningOnVercel = !!isVercel || (process.env.NODE_ENV === 'production' && typeof window !== 'undefined');
+
+// Forcera användning av proxy i produktion, även om Vercel-detektering misslyckas
+const shouldUseProxy = isRunningOnVercel || process.env.NODE_ENV === 'production';
 
 // Försök validera URL
 let isValidUrl = false;
@@ -34,7 +38,8 @@ console.log('[supabase-client] Configuration:', {
   isValidUrl,
   hasAnonKey: !!SUPABASE_ANON_KEY,
   environment: process.env.NODE_ENV || 'unknown',
-  isVercel: isRunningOnVercel ? 'yes' : 'no'
+  isVercel: isRunningOnVercel ? 'yes' : 'no',
+  usingProxy: shouldUseProxy ? 'yes' : 'no'
 });
 
 // For tracking the client instance
@@ -44,6 +49,36 @@ let clientInstance: any = null;
 const checkUrlConnection = async (url: string): Promise<boolean> => {
   if (typeof window === 'undefined') return true; // På serversidan, anta att allt funkar
   
+  // I produktionsmiljö, använd alltid proxyn för connection-check
+  if (shouldUseProxy) {
+    // Gör alltid ett anrop mot vårt proxy-API istället för direkt mot Supabase
+    try {
+      console.log(`[supabase-client] Testing connection via proxy API`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const proxyHealthUrl = `/api/supabase-proxy/health`;
+      const response = await fetch(proxyHealthUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'X-Supabase-Proxy': 'true',
+          'Cache-Control': 'no-cache, no-store'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`[supabase-client] Proxy connection test result: ${response.status}`);
+      return response.ok;
+    } catch (error) {
+      console.error(`[supabase-client] Proxy connection test failed:`, error);
+      return false;
+    }
+  }
+  
+  // Vanlig kontroll för dev-miljö
   try {
     // Skapa ett lite mer "kontrollerat" URL för en simpel GET-förfrågan
     const testUrl = `${url}/auth/v1/health`;
@@ -75,7 +110,7 @@ const checkUrlConnection = async (url: string): Promise<boolean> => {
   }
 };
 
-// Skapa en anpassad fetch-funktion som använder proxy i Vercel-miljö
+// Skapa en anpassad fetch-funktion som använder proxy i Vercel-miljö eller produktion
 const createCustomFetch = () => {
   // Skapa en anpassad fetch-funktion som kan hantera proxying
   const customFetch = async (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
@@ -87,8 +122,8 @@ const createCustomFetch = () => {
       const isSameOrigin = typeof window !== 'undefined' && urlStr.startsWith(window.location.origin);
       const isSupabaseUrl = SUPABASE_URL && urlStr.startsWith(SUPABASE_URL);
       
-      // I Vercel-miljö, använd proxy för Supabase-anrop
-      if (isRunningOnVercel && isSupabaseUrl && !isSameOrigin) {
+      // I Vercel-miljö eller produktion, använd proxy för Supabase-anrop
+      if ((shouldUseProxy || process.env.NODE_ENV === 'production') && isSupabaseUrl && !isSameOrigin) {
         // Extrahera den del av URL:en som kommer efter Supabase-bassökvägen
         const supabasePath = urlStr.substring(SUPABASE_URL.length);
         
@@ -182,14 +217,14 @@ export const createBrowserClient = () => {
     // Create a new client
     if (!window.__supabaseClient) {
       console.log('[supabase-client] Creating new Supabase client with URL:', normalizedUrl);
-                 
-      // Skapa anpassad fetch-funktion om vi är i Vercel-miljö
-      const customFetch = isRunningOnVercel ? createCustomFetch() : undefined;
+               
+      // Använd alltid anpassad fetch i produktion
+      const customFetch = shouldUseProxy ? createCustomFetch() : undefined;
       
-      if (isRunningOnVercel) {
-        console.log('[supabase-client] Using custom fetch with proxy for Vercel environment');
+      if (shouldUseProxy) {
+        console.log('[supabase-client] Using custom fetch with proxy for production/Vercel environment');
       }
-                 
+               
       // Skapa klient med förbättrade anslutningsinställningar
       const client = createClient(normalizedUrl, SUPABASE_ANON_KEY, {
         auth: {

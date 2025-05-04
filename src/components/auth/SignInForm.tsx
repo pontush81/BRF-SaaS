@@ -15,7 +15,8 @@ const checkConnectivity = async (url: string): Promise<boolean> => {
     const response = await fetch(url, {
       method: 'HEAD',
       signal: controller.signal,
-      mode: 'no-cors' // För att kringgå CORS på enkel förfrågan
+      mode: 'no-cors', // För att kringgå CORS på enkel förfrågan
+      cache: 'no-store' // Förhindra caching
     });
     
     clearTimeout(timeoutId);
@@ -27,6 +28,53 @@ const checkConnectivity = async (url: string): Promise<boolean> => {
   }
 };
 
+// Mer robust hjälpfunktion för att testa Supabase-anslutning via proxy
+const checkSupabaseViaProxy = async (): Promise<{reachable: boolean, error?: string}> => {
+  try {
+    console.log(`Testar Supabase-anslutning via proxy...`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    // Anropa vår health-endpoint 
+    const response = await fetch('/api/supabase-proxy/health', {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'Cache-Control': 'no-cache, no-store',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error(`Proxy health check gav felstatus: ${response.status}`);
+      return { reachable: false, error: `Proxy error: ${response.status}` };
+    }
+    
+    // Parse response
+    const data = await response.json();
+    console.log(`Proxy health check resultat:`, data);
+    
+    // Kontrollera om Supabase är nåbar via proxy
+    if (data.supabase && data.supabase.reachable === true) {
+      console.log(`Supabase är nåbar via proxy`);
+      return { reachable: true };
+    } else {
+      const errorMessage = data.supabase?.error || 'Okänt fel';
+      console.error(`Supabase är inte nåbar via proxy: ${errorMessage}`);
+      return { reachable: false, error: errorMessage };
+    }
+  } catch (error) {
+    console.error(`Proxy-anslutningstest misslyckades:`, error);
+    return { 
+      reachable: false, 
+      error: error instanceof Error ? error.message : 'Okänt fel'
+    };
+  }
+};
+
 export default function SignInForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,6 +83,7 @@ export default function SignInForm() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState<string>('');
   const [networkStatus, setNetworkStatus] = useState<string>('checking');
+  const [proxyStatus, setProxyStatus] = useState<string>('unknown');
   
   // Hämta redirect-parametern från URL
   const searchParams = useSearchParams();
@@ -59,13 +108,36 @@ export default function SignInForm() {
           setNetworkStatus('no-internet');
           return;
         }
+
+        // I produktionsmiljö, kontrollera via proxy
+        if (process.env.NODE_ENV === 'production') {
+          const proxyCheck = await checkSupabaseViaProxy();
+          if (proxyCheck.reachable) {
+            setNetworkStatus('online');
+            setProxyStatus('working');
+          } else {
+            setNetworkStatus('proxy-error');
+            setProxyStatus('failed');
+            console.error('Proxy error:', proxyCheck.error);
+          }
+          return;
+        }
         
-        // Testa sedan Supabase-anslutning
+        // I utveckling, testa direkt Supabase-anslutning också
         try {
           const baseUrl = new URL(url);
-          const isReachable = await checkConnectivity(`${baseUrl.origin}`);
+          // Försök först via proxy (även i utveckling)
+          const proxyCheck = await checkSupabaseViaProxy();
+          if (proxyCheck.reachable) {
+            setNetworkStatus('online');
+            setProxyStatus('working');
+            return;
+          }
           
+          // Fallback till direkt anslutning i utveckling
+          const isReachable = await checkConnectivity(`${baseUrl.origin}`);
           setNetworkStatus(isReachable ? 'online' : 'unreachable');
+          setProxyStatus('not-used');
         } catch (e) {
           console.error('Ogiltigt Supabase URL-format:', url);
           setNetworkStatus('invalid-url');
@@ -143,10 +215,15 @@ export default function SignInForm() {
     try {
       // Kontrollera nätverksstatus först
       if (networkStatus !== 'online' && networkStatus !== 'checking') {
+        // Specialhantering för Supabase-anslutningsfel
+        if (networkStatus === 'unreachable' || networkStatus === 'proxy-error') {
+          setErrorMessage('Anslutningsproblem till Supabase. Försöker med proxy-baserad inloggning...');
+          await attemptProxyBasedLogin();
+          return;
+        }
+        
         if (networkStatus === 'no-internet') {
           throw new Error('Ingen internetanslutning. Kontrollera din uppkoppling.');
-        } else if (networkStatus === 'unreachable') {
-          throw new Error('Kan inte ansluta till Supabase-servern. Servern kan vara nere.');
         } else if (networkStatus === 'invalid-url') {
           throw new Error('Ogiltig Supabase-URL konfiguration.');
         }
@@ -296,67 +373,106 @@ export default function SignInForm() {
       console.error('Inloggningsfel:', error);
       setErrorMessage(error.message || 'Ett fel uppstod vid inloggning');
       
-      // Om vi får ett felmeddelande relaterat till autentisering, försök igen med en annan metod
-      if (error.message && (error.message.includes('auth') || error.message.includes('fetch'))) {
-        try {
-          setErrorMessage('Provar alternativ inloggningsmetod...');
-          
-          // Mock-inloggning i utvecklingsläge
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('Använder utvecklingsläge-mockad inloggning');
-            
-            // Sätt mock-cookies
-            document.cookie = `sb-access-token=mock-token; path=/; max-age=${60*60*24}; SameSite=Lax`;
-            document.cookie = `sb-refresh-token=mock-refresh; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
-            document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
-            
-            setSuccessMessage('Utvecklingsläge: Mock-inloggning lyckades! Omdirigerar...');
-            
-            // Använd direkt omladdning
-            setTimeout(() => {
-              window.location.href = redirectPath;
-            }, 1000);
-            
-            return;
-          }
-          
-          // För produktion, försök med alternativ inloggningsmetod
-          const supabase = createBrowserClient();
-          
-          // Rensa befintlig session
-          await supabase.auth.signOut();
-          
-          // Använd email/password login
-          const { data, error: loginError } = await supabase.auth.signInWithPassword({
+      // Om vi får ett felmeddelande relaterat till autentisering eller nätverk, försök igen med proxy-baserad metod
+      if (error.message && (error.message.includes('auth') || error.message.includes('fetch') || error.message.includes('network') || error.message.includes('unreachable'))) {
+        await attemptProxyBasedLogin();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Hjälpfunktion för att försöka logga in via proxyn när normal inloggning misslyckas
+  const attemptProxyBasedLogin = async () => {
+    try {
+      setLoading(true);
+      setErrorMessage('Försöker proxy-baserad inloggning...');
+      
+      // Kontrollera att proxy-hälsokontrollen fungerar
+      const proxyHealth = await checkSupabaseViaProxy();
+      if (!proxyHealth.reachable) {
+        throw new Error(`Kunde inte nå Supabase via proxy: ${proxyHealth.error || 'Okänt fel'}`);
+      }
+      
+      // I utvecklingsläge, använd mock direkt
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Använder utvecklingsläge-mockad inloggning via proxy');
+        
+        // Sätt mock-cookies
+        document.cookie = `sb-access-token=mock-token; path=/; max-age=${60*60*24}; SameSite=Lax`;
+        document.cookie = `sb-refresh-token=mock-refresh; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
+        document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
+        
+        setSuccessMessage('Utvecklingsläge: Mock-inloggning lyckades! Omdirigerar...');
+        
+        // Använd direkt omladdning
+        setTimeout(() => {
+          window.location.href = redirectPath;
+        }, 1000);
+        
+        return;
+      }
+      
+      // För produktion, använd en fetch via proxyn direkt
+      try {
+        // Anropa vår proxy-endpoint direkt för inloggning
+        const response = await fetch('/api/supabase-proxy/auth/v1/token?grant_type=password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Supabase-Proxy': 'true'
+          },
+          body: JSON.stringify({
             email,
             password,
-          });
-          
-          if (loginError) throw loginError;
-          
-          if (data && data.session) {
-            // Sätt cookies manuellt
-            const session = data.session;
-            document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${60*60*24}; SameSite=Lax`;
-            document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
-            
-            // Sätt cookie manuellt i utvecklingsmiljö
-            if (process.env.NODE_ENV !== 'production') {
-              document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
-            }
-            
-            setSuccessMessage('Inloggningen lyckades med alternativ metod! Omdirigerar...');
-            
-            // Använd direkt omladdning
-            setTimeout(() => {
-              window.location.href = redirectPath;
-            }, 1000);
-          }
-        } catch (retryError) {
-          console.error('Andra inloggningsförsöket misslyckades:', retryError);
-          setErrorMessage('Båda inloggningsförsöken misslyckades. Kontrollera dina uppgifter och försök igen senare.');
+            grant_type: 'password'
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error_description || errorData.error || 'Inloggning via proxy misslyckades');
         }
+        
+        const data = await response.json();
+        
+        // Sätt cookies manuellt från proxy-svaret
+        if (data.access_token && data.refresh_token) {
+          document.cookie = `sb-access-token=${data.access_token}; path=/; max-age=${60*60*24}; SameSite=Lax`;
+          document.cookie = `sb-refresh-token=${data.refresh_token}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
+          
+          // Synka med server
+          try {
+            await fetch('/api/auth/session', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                accessToken: data.access_token, 
+                refreshToken: data.refresh_token 
+              }),
+            });
+          } catch (syncError) {
+            console.error('Kunde inte synkronisera server session:', syncError);
+          }
+          
+          setSuccessMessage('Inloggningen lyckades via proxy! Omdirigerar...');
+          
+          // Använd direkt omladdning med kort fördröjning
+          setTimeout(() => {
+            window.location.href = redirectPath;
+          }, 1000);
+        } else {
+          throw new Error('Fick inget access token från proxy-inloggningen');
+        }
+      } catch (proxyError) {
+        console.error('Proxy inloggningsfel:', proxyError);
+        throw new Error(`Proxy inloggning misslyckades: ${proxyError instanceof Error ? proxyError.message : 'Okänt fel'}`);
       }
+    } catch (error) {
+      console.error('Proxy-baserad inloggning misslyckades:', error);
+      setErrorMessage(`Alla inloggningsförsök misslyckades. ${error instanceof Error ? error.message : 'Kontrollera dina uppgifter och försök igen.'}`);
     } finally {
       setLoading(false);
     }
@@ -368,11 +484,13 @@ export default function SignInForm() {
       case 'checking':
         return 'Kontrollerar anslutning...';
       case 'online':
-        return 'Anslutning OK';
+        return 'Anslutning OK' + (proxyStatus === 'working' ? ' (via proxy)' : '');
       case 'no-internet':
         return 'Ingen internetanslutning';
       case 'unreachable':
         return 'Kan inte nå Supabase-servern';
+      case 'proxy-error':
+        return 'Fel vid anslutning via proxy';
       case 'invalid-url':
         return 'Ogiltig server-konfiguration';
       case 'error':
@@ -396,6 +514,14 @@ export default function SignInForm() {
         }`}>
           {getNetworkMessage()}
         </div>
+        
+        {/* Visa proxy-status om tillgänglig */}
+        {proxyStatus !== 'unknown' && (
+          <div className={`text-xs ${proxyStatus === 'working' ? 'text-green-500' : 'text-amber-500'}`}>
+            Proxy: {proxyStatus === 'working' ? 'Tillgänglig' : 
+                   proxyStatus === 'not-used' ? 'Ej används' : 'Ej tillgänglig'}
+          </div>
+        )}
       </div>
       
       <div>
