@@ -29,49 +29,127 @@ const checkConnectivity = async (url: string): Promise<boolean> => {
 };
 
 // Mer robust hjälpfunktion för att testa Supabase-anslutning via proxy
-const checkSupabaseViaProxy = async (): Promise<{reachable: boolean, error?: string}> => {
+const checkSupabaseViaProxy = async (): Promise<{reachable: boolean, error?: string, details?: any}> => {
   try {
     console.log(`Testar Supabase-anslutning via proxy...`);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // Öka timeout till 8 sekunder
     
-    // Anropa vår health-endpoint 
-    const response = await fetch('/api/supabase-proxy/health', {
+    // Anropa vår health-endpoint med detaljerade fel
+    const response = await fetch('/api/supabase-proxy/health?verbose=true', {
       method: 'GET',
       signal: controller.signal,
       headers: {
         'Cache-Control': 'no-cache, no-store',
-        'X-Requested-With': 'XMLHttpRequest'
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Debug': 'true'
       }
     });
     
     clearTimeout(timeoutId);
     
-    if (!response.ok) {
-      console.error(`Proxy health check gav felstatus: ${response.status}`);
-      return { reachable: false, error: `Proxy error: ${response.status}` };
+    // Logga råsvaret för debugging
+    const responseText = await response.text();
+    console.log(`Proxy health check raw response (${responseText.length} chars):`, 
+      responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText);
+    
+    // Försök parsa JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`Kunde inte parsa proxy-svar som JSON:`, e);
+      return { 
+        reachable: false, 
+        error: `Invalid response: ${responseText.substring(0, 100)}`, 
+        details: { parseError: e instanceof Error ? e.message : String(e) }
+      };
     }
     
-    // Parse response
-    const data = await response.json();
+    if (!response.ok) {
+      console.error(`Proxy health check gav felstatus: ${response.status}`, data);
+      return { 
+        reachable: false, 
+        error: `Proxy error: ${response.status}`, 
+        details: data 
+      };
+    }
+    
     console.log(`Proxy health check resultat:`, data);
     
     // Kontrollera om Supabase är nåbar via proxy
     if (data.supabase && data.supabase.reachable === true) {
       console.log(`Supabase är nåbar via proxy`);
-      return { reachable: true };
+      return { reachable: true, details: data };
     } else {
+      // Extrahera mer detaljerad felinformation
       const errorMessage = data.supabase?.error || 'Okänt fel';
-      console.error(`Supabase är inte nåbar via proxy: ${errorMessage}`);
-      return { reachable: false, error: errorMessage };
+      const statusCode = data.supabase?.status || 'okänd status';
+      
+      console.error(`Supabase är inte nåbar via proxy: ${errorMessage} (Status: ${statusCode})`, data.supabase);
+      
+      return { 
+        reachable: false, 
+        error: `${errorMessage} (Status: ${statusCode})`, 
+        details: data.supabase 
+      };
     }
   } catch (error) {
     console.error(`Proxy-anslutningstest misslyckades:`, error);
+    
+    // Mer detaljerad debugging av nätverksfel
+    let errorDetails = {};
+    if (error instanceof Error) {
+      errorDetails = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        // För fetch-relaterade fel
+        cause: error.cause ? String(error.cause) : undefined
+      };
+      
+      // Specialhantering för timeout
+      if (error.name === 'AbortError') {
+        return { 
+          reachable: false, 
+          error: 'Timeout vid anslutning till proxy (8s)', 
+          details: errorDetails
+        };
+      }
+    }
+    
     return { 
       reachable: false, 
-      error: error instanceof Error ? error.message : 'Okänt fel'
+      error: error instanceof Error ? error.message : 'Okänt fel',
+      details: errorDetails
     };
+  }
+};
+
+// Hjälpfunktion för att hämta detaljerad serverdiagnostik
+const getServerDiagnostics = async (): Promise<any> => {
+  try {
+    console.log('Hämtar server-diagnostik...');
+    
+    const response = await fetch('/api/supabase-proxy/debug', {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store'
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`Server-diagnostik misslyckades: ${response.status}`);
+      return { error: `Status ${response.status}` };
+    }
+    
+    const data = await response.json();
+    console.log('Server-diagnostik:', data);
+    return data;
+  } catch (error) {
+    console.error('Server-diagnostik fel:', error);
+    return { error: error instanceof Error ? error.message : String(error) };
   }
 };
 
@@ -80,10 +158,13 @@ export default function SignInForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [detailedError, setDetailedError] = useState<any>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState<string>('');
   const [networkStatus, setNetworkStatus] = useState<string>('checking');
   const [proxyStatus, setProxyStatus] = useState<string>('unknown');
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null);
   
   // Hämta redirect-parametern från URL
   const searchParams = useSearchParams();
@@ -119,6 +200,17 @@ export default function SignInForm() {
             setNetworkStatus('proxy-error');
             setProxyStatus('failed');
             console.error('Proxy error:', proxyCheck.error);
+            
+            // Spara detaljerad felinformation för debugging
+            setDetailedError(proxyCheck.details);
+            
+            // Hämta ytterligare diagnostik om proxy-fel
+            try {
+              const diagnostics = await getServerDiagnostics();
+              setDiagnosticInfo(diagnostics);
+            } catch (e) {
+              console.error('Kunde inte hämta serverdiagnostik:', e);
+            }
           }
           return;
         }
@@ -134,6 +226,9 @@ export default function SignInForm() {
             return;
           }
           
+          // Om proxy-kontroll misslyckades, spara detaljer
+          setDetailedError(proxyCheck.details);
+          
           // Fallback till direkt anslutning i utveckling
           const isReachable = await checkConnectivity(`${baseUrl.origin}`);
           setNetworkStatus(isReachable ? 'online' : 'unreachable');
@@ -143,6 +238,7 @@ export default function SignInForm() {
           setNetworkStatus('invalid-url');
         }
       } catch (e) {
+        console.error('Anslutningskontroll misslyckades:', e);
         setNetworkStatus('error');
       }
     };
@@ -387,10 +483,29 @@ export default function SignInForm() {
     try {
       setLoading(true);
       setErrorMessage('Försöker proxy-baserad inloggning...');
+      setDetailedError(null);
+      
+      console.log('Utför proxy health check före inloggningsförsök...');
       
       // Kontrollera att proxy-hälsokontrollen fungerar
       const proxyHealth = await checkSupabaseViaProxy();
+      console.log('Proxy health check resultat:', proxyHealth);
+      
       if (!proxyHealth.reachable) {
+        // Spara detaljerad felinformation
+        setDetailedError(proxyHealth.details);
+        
+        // Hämta mer server-diagnostik för felsökning
+        try {
+          console.log('Hämtar server-diagnostik vid fel...');
+          const diagnostics = await getServerDiagnostics();
+          setDiagnosticInfo(diagnostics);
+          console.log('Server-diagnostik:', diagnostics);
+        } catch (diagError) {
+          console.error('Kunde inte hämta server-diagnostik:', diagError);
+        }
+        
+        // Kastande av felet har flyttats utanför try-blocket för server-diagnostik
         throw new Error(`Kunde inte nå Supabase via proxy: ${proxyHealth.error || 'Okänt fel'}`);
       }
       
@@ -415,7 +530,9 @@ export default function SignInForm() {
       
       // För produktion, använd en fetch via proxyn direkt
       try {
-        // Anropa vår proxy-endpoint direkt för inloggning
+        console.log('Utför proxy-baserad inloggning via /api/supabase-proxy/auth/v1/token');
+        
+        // Försök med direkta anropet först
         const response = await fetch('/api/supabase-proxy/auth/v1/token?grant_type=password', {
           method: 'POST',
           headers: {
@@ -429,12 +546,28 @@ export default function SignInForm() {
           })
         });
         
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error_description || errorData.error || 'Inloggning via proxy misslyckades');
+        // Logga rå-svaret för debugging
+        const responseText = await response.text();
+        console.log(`Auth API raw response (${responseText.length} chars):`, 
+          responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText);
+        
+        // Försök parsa som JSON
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (e) {
+          console.error('Kunde inte parsa auth-svar som JSON:', e);
+          throw new Error(`Ogiltigt format på svar: ${responseText.substring(0, 100)}`);
         }
         
-        const data = await response.json();
+        if (!response.ok) {
+          console.error('Auth API svarade med felstatus:', response.status, data);
+          
+          // Spara detaljerad felinformation
+          setDetailedError(data);
+          
+          throw new Error(data.error_description || data.error || `Felaktig status: ${response.status}`);
+        }
         
         // Sätt cookies manuellt från proxy-svaret
         if (data.access_token && data.refresh_token) {
@@ -443,7 +576,9 @@ export default function SignInForm() {
           
           // Synka med server
           try {
-            await fetch('/api/auth/session', {
+            console.log('Synkroniserar session med servern...');
+            
+            const syncResponse = await fetch('/api/auth/session', {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
@@ -453,6 +588,12 @@ export default function SignInForm() {
                 refreshToken: data.refresh_token 
               }),
             });
+            
+            if (!syncResponse.ok) {
+              console.error('Server session sync misslyckades:', await syncResponse.text());
+            } else {
+              console.log('Server session sync slutförd:', syncResponse.status);
+            }
           } catch (syncError) {
             console.error('Kunde inte synkronisera server session:', syncError);
           }
@@ -468,6 +609,15 @@ export default function SignInForm() {
         }
       } catch (proxyError) {
         console.error('Proxy inloggningsfel:', proxyError);
+        
+        // Om vi inte redan har satt detaljerad felinformation
+        if (!detailedError) {
+          setDetailedError({
+            error: proxyError instanceof Error ? proxyError.message : String(proxyError),
+            stack: proxyError instanceof Error ? proxyError.stack : undefined
+          });
+        }
+        
         throw new Error(`Proxy inloggning misslyckades: ${proxyError instanceof Error ? proxyError.message : 'Okänt fel'}`);
       }
     } catch (error) {
@@ -500,6 +650,16 @@ export default function SignInForm() {
     }
   };
 
+  // Funktion för att visa/dölja detaljerad felsökning
+  const toggleDebugMode = () => {
+    setDebugMode(!debugMode);
+    
+    if (!debugMode && !diagnosticInfo) {
+      // Hämta diagnostik första gången användaren aktiverar debug-läge
+      getServerDiagnostics().then(data => setDiagnosticInfo(data));
+    }
+  };
+
   return (
     <form onSubmit={handleSignIn} className="space-y-6">
       <div className="text-xs text-center space-y-1">
@@ -520,6 +680,47 @@ export default function SignInForm() {
           <div className={`text-xs ${proxyStatus === 'working' ? 'text-green-500' : 'text-amber-500'}`}>
             Proxy: {proxyStatus === 'working' ? 'Tillgänglig' : 
                    proxyStatus === 'not-used' ? 'Ej används' : 'Ej tillgänglig'}
+          </div>
+        )}
+        
+        {/* Debug-knapp */}
+        <button 
+          type="button" 
+          onClick={toggleDebugMode} 
+          className="text-xs text-blue-500 hover:underline focus:outline-none mt-2"
+        >
+          {debugMode ? 'Dölj diagnostik' : 'Visa diagnostik'}
+        </button>
+        
+        {/* Detaljerad diagnostik i debug-läge */}
+        {debugMode && (
+          <div className="text-left bg-gray-50 p-2 mt-2 rounded text-xs overflow-auto max-h-60">
+            <div className="font-semibold mb-1">Diagnostik:</div>
+            
+            {detailedError && (
+              <div className="mb-2">
+                <div className="font-medium text-red-500">Fel:</div>
+                <pre className="whitespace-pre-wrap break-words text-xs">
+                  {JSON.stringify(detailedError, null, 2)}
+                </pre>
+              </div>
+            )}
+            
+            {diagnosticInfo && (
+              <div>
+                <div className="font-medium text-blue-500">Server info:</div>
+                <pre className="whitespace-pre-wrap break-words text-xs">
+                  {JSON.stringify(diagnosticInfo, null, 2)}
+                </pre>
+              </div>
+            )}
+            
+            <div className="mt-2">
+              <div className="font-medium">Cookies:</div>
+              <pre className="whitespace-pre-wrap break-words text-xs">
+                {document.cookie.split(';').map(c => c.trim()).join('\n')}
+              </pre>
+            </div>
           </div>
         )}
       </div>
@@ -555,14 +756,32 @@ export default function SignInForm() {
       </div>
 
       {errorMessage && (
-        <div className="text-red-600 text-sm">
-          {errorMessage}
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 my-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{errorMessage}</p>
+            </div>
+          </div>
         </div>
       )}
 
       {successMessage && (
-        <div className="text-green-600 text-sm">
-          {successMessage}
+        <div className="bg-green-50 border-l-4 border-green-500 p-4 my-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-green-700">{successMessage}</p>
+            </div>
+          </div>
         </div>
       )}
 
