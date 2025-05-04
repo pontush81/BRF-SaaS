@@ -13,6 +13,8 @@ const theme = createTheme({
     // Använd samma blå färg som resten av applikationen
     blue: ['#e6f7ff', '#bae7ff', '#91d5ff', '#69c0ff', '#40a9ff', '#1890ff', '#096dd9', '#0050b3', '#003a8c', '#002766'],
   },
+  // Lägg till normalisering av CSS
+  normalizeCSS: true,
 });
 
 interface ProvidersProps {
@@ -21,7 +23,7 @@ interface ProvidersProps {
 
 export default function Providers({ children }: ProvidersProps) {
   return (
-    <MantineProvider theme={theme} withNormalizeCSS>
+    <MantineProvider theme={theme}>
       <AuthProvider>
         <ToastProvider>
           {children}
