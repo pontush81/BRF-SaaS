@@ -5,7 +5,19 @@
  * by directly wrapping functionality without import cycles.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, User } from '@supabase/supabase-js';
+
+// Helper type definitions to match Supabase auth types
+type AuthError = {
+  name: string;
+  message: string;
+  status?: number;
+};
+
+type UserResponse = {
+  data: { user: User | null };
+  error: AuthError | null;
+};
 
 // Environment variables
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -31,22 +43,26 @@ export const createServerClient = (cookieStore?: any) => {
       // Add mocked auth methods for development
       mockClient.auth = {
         ...mockClient.auth,
-        getUser: async () => {
+        getUser: async (): Promise<UserResponse> => {
           const mockCookies = cookieStore ? 
             Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
             {};
           
           if (mockCookies['supabase-dev-auth'] === 'true') {
+            // Create a properly typed mock user that matches Supabase User type
+            const mockUser: User = {
+              id: '12345-mock-server-user-id',
+              email: 'dev@example.com',
+              app_metadata: {},
+              user_metadata: { name: 'Server Utvecklare' },
+              aud: 'authenticated',
+              created_at: new Date().toISOString(),
+              role: '',
+              confirmed_at: new Date().toISOString()
+            };
+            
             return { 
-              data: { 
-                user: {
-                  id: '12345-mock-server-user-id',
-                  email: 'dev@example.com',
-                  app_metadata: {},
-                  user_metadata: { name: 'Server Utvecklare' },
-                  created_at: new Date().toISOString()
-                } 
-              }, 
+              data: { user: mockUser }, 
               error: null 
             };
           }

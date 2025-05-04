@@ -5,7 +5,7 @@
  * by directly implementing the functionality without import cycles.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, User } from '@supabase/supabase-js';
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -14,6 +14,30 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 // For tracking the client instance
 let clientInstance: any = null;
+
+// Helper type definitions to match Supabase auth types
+type AuthError = {
+  name: string;
+  message: string;
+  status?: number;
+};
+
+type UserResponse = {
+  data: { user: User | null };
+  error: AuthError | null;
+};
+
+type SessionResponse = {
+  data: {
+    session: {
+      access_token: string;
+      refresh_token?: string;
+      expires_at?: number;
+      user: User;
+    } | null;
+  };
+  error: AuthError | null;
+};
 
 // Direct implementation to avoid circular imports
 export const createBrowserClient = () => {
@@ -52,24 +76,35 @@ export const createBrowserClient = () => {
           const origAuth = client.auth;
           client.auth = {
             ...origAuth,
-            getUser: async () => {
-              const mockUser = {
+            getUser: async (): Promise<UserResponse> => {
+              // Create a properly typed mock user that matches Supabase User type
+              const mockUser: User = {
                 id: '12345-mock-user-id',
                 email: 'dev@example.com',
                 app_metadata: {},
                 user_metadata: { name: 'Utvecklaren' },
-                created_at: new Date().toISOString()
+                aud: 'authenticated',
+                created_at: new Date().toISOString(),
+                role: '',
+                confirmed_at: new Date().toISOString()
               };
               
-              return { data: { user: mockUser }, error: null };
+              return { 
+                data: { user: mockUser }, 
+                error: null 
+              };
             },
-            getSession: async () => {
-              const mockUser = {
+            getSession: async (): Promise<SessionResponse> => {
+              // Create a properly typed mock user that matches Supabase User type
+              const mockUser: User = {
                 id: '12345-mock-user-id',
                 email: 'dev@example.com',
                 app_metadata: {},
                 user_metadata: { name: 'Utvecklaren' },
-                created_at: new Date().toISOString()
+                aud: 'authenticated',
+                created_at: new Date().toISOString(),
+                role: '',
+                confirmed_at: new Date().toISOString()
               };
               
               const mockSession = {
@@ -79,7 +114,10 @@ export const createBrowserClient = () => {
                 user: mockUser
               };
               
-              return { data: { session: mockSession }, error: null };
+              return { 
+                data: { session: mockSession }, 
+                error: null 
+              };
             }
           };
         }
