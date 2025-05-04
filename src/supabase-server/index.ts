@@ -90,7 +90,7 @@ export const createServerClient = (cookieStore?: CookieStore) => {
           
           const mockUserId = '550e8400-e29b-41d4-a716-446655440000';
           
-          // Skapa en mock user
+          // Skapa en mock user - använd endast egenskaper som finns i User-typen
           const user: User = {
             id: mockUserId,
             app_metadata: {
@@ -110,17 +110,7 @@ export const createServerClient = (cookieStore?: CookieStore) => {
             email_confirmed_at: new Date().toISOString(),
             phone_confirmed_at: null,
             last_sign_in_at: new Date().toISOString(),
-            confirmed_at: new Date().toISOString(),
-            confirmation_sent_at: null,
-            recovery_sent_at: null,
-            email_change_sent_at: null,
-            banned_until: null,
-            reauthentication_sent_at: null,
-            invited_at: null,
-            action_link: null,
-            deleted_at: null,
-            identities: [],
-            factors: [],
+            confirmed_at: new Date().toISOString()
           };
           
           return { data: { user }, error: null };
