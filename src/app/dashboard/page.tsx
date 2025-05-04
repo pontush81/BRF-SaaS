@@ -1,260 +1,317 @@
 import { Metadata } from 'next';
-import { getCurrentUserServer, UserRole, hasRole } from '@/lib/auth/roleUtils';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+import { getServerSideUser } from '@/supabase-server';
 import prisma from '@/lib/prisma';
 import Link from 'next/link';
-
-// Definiera typer för section, page och doc för att åtgärda TypeScript-fel
-interface Page {
-  id: string;
-  title: string;
-  sortOrder: number;
-}
-
-interface Section {
-  id: string;
-  title: string;
-  sortOrder: number;
-  pages: Page[];
-}
-
-interface Document {
-  id: string;
-  title: string;
-  category: string;
-  updatedAt: Date;
-}
+import ClientDashboard from '@/components/dashboard/ClientDashboard';
 
 export const metadata: Metadata = {
   title: 'Dashboard - BRF Handbok',
-  description: 'Din personliga dashboard för BRF-handboken',
+  description: 'Din översikt över BRF-portalen',
 };
 
+// Ingen caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function Dashboard() {
-  const user = await getCurrentUserServer();
-
-  if (!user) {
-    redirect('/login');
-  }
-
-  // Hämta information om organisationen om användaren är kopplad till en
-  const organization = user.organization;
-
-  // Om användaren är admin eller editor, visa relevanta länkar
-  const isAdmin = hasRole(user, UserRole.ADMIN);
-  const isEditor = hasRole(user, UserRole.EDITOR);
-
-  // Hämta data beroende på tillhörighet
-  let handbook = null;
-  let documents: Document[] = [];
-  let properties: any[] = [];
-
-  if (organization) {
-    // Hämta data om organisationen
-    [handbook, documents, properties] = await Promise.all([
-      // Hämta handboksinformation
-      prisma.handbook.findUnique({
-        where: { organizationId: organization.id },
+  try {
+    // Hämta användarens session och information från server
+    const cookieStore = cookies();
+    const user = await getServerSideUser(cookieStore);
+    
+    console.log("[DASHBOARD] Session check:", { 
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email
+    });
+    
+    // Omdirigera till login om användaren inte är inloggad
+    if (!user || !user.email) {
+      console.log("[DASHBOARD] Ingen användare hittades, omdirigerar till login");
+      redirect('/login');
+    }
+    
+    // Kontrollera om vi är i development mode och använder mock-användare
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const isMockUser = isDevelopment && user.id.includes('mock');
+    
+    let dbUser = null;
+    let defaultOrganization = null;
+    
+    if (!isMockUser) {
+      // För icke-mock-användare: Hämta användarinformation från databasen
+      dbUser = await prisma.user.findUnique({
+        where: { email: user.email },
         include: {
-          sections: {
-            orderBy: { sortOrder: 'asc' },
-            include: { 
-              pages: { 
-                orderBy: { sortOrder: 'asc' },
-                take: 5 
-              } 
+          organizations: {
+            include: {
+              organization: true,
             },
-            take: 3
+            where: {
+              isDefault: true,
+            },
+          },
+        },
+      });
+      
+      if (!dbUser) {
+        console.log("[DASHBOARD] Användare hittades inte i databasen");
+        
+        if (isDevelopment) {
+          // I utvecklingsmiljö skapar vi en testanvändare om den inte finns
+          console.log("[DASHBOARD] Skapar testanvändare eftersom vi är i utvecklingsmiljö");
+          try {
+            // Skapa testanvändaren
+            dbUser = await prisma.user.create({
+              data: {
+                id: user.id,
+                email: user.email,
+                name: 'Utvecklingsanvändare',
+              },
+            });
+          } catch (dbError) {
+            console.error("[DASHBOARD] Fel vid försök att skapa testanvändare:", dbError);
           }
+        } else {
+          // I produktionsmiljö, omdirigera till login
+          redirect('/login');
         }
-      }),
-      // Hämta senaste dokumenten
-      prisma.document.findMany({
-        where: { organizationId: organization.id },
-        orderBy: { updatedAt: 'desc' },
-        take: 5
-      }),
-      // Hämta fastigheter
-      prisma.property.findMany({
-        where: { organizationId: organization.id },
-        include: { units: { take: 3 } },
-        take: 3
-      })
-    ]);
-  }
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
-
-      {organization ? (
-        <>
-          {/* Admin/Editor-länkar */}
-          {(isAdmin || isEditor) && (
-            <div className="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
-              <h2 className="text-lg font-medium text-blue-800 mb-3">
-                Du är {isAdmin ? 'administratör' : 'redaktör'} för {organization.name}
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                {isAdmin && (
-                  <Link href="/admin" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
-                    Administrera BRF
-                  </Link>
-                )}
-                {(isAdmin || isEditor) && (
-                  <Link href="/editor" className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm">
-                    Redigera innehåll
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Handbok */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="md:col-span-2">
-              <div className="bg-white p-6 rounded-lg shadow-sm h-full">
-                <h2 className="text-xl font-semibold mb-4">
-                  {handbook?.title || `${organization.name} Handbok`}
-                </h2>
-                <p className="text-gray-600 mb-6">
-                  {handbook?.description || 'Din BRFs digitala handbok med all viktig information samlad på ett ställe.'}
-                </p>
-
-                {handbook?.sections && handbook.sections.length > 0 ? (
-                  <div className="space-y-4">
-                    {handbook.sections.map((section: Section) => (
-                      <div key={section.id} className="border rounded-lg overflow-hidden">
-                        <div className="bg-gray-50 px-4 py-2 border-b">
-                          <h3 className="font-medium">{section.title}</h3>
-                        </div>
-                        <ul className="divide-y">
-                          {section.pages.map((page: Page) => (
-                            <li key={page.id} className="px-4 py-2 hover:bg-gray-50">
-                              <Link href={`/handbook/${section.id}/${page.id}`} className="text-blue-600 hover:underline">
-                                {page.title}
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                        {section.pages.length === 0 && (
-                          <p className="px-4 py-2 text-gray-500 italic text-sm">
-                            Inga sidor i denna sektion
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 mb-4">Handboken har inte konfigurerats än.</p>
-                    <Link href="/handbook" className="text-blue-600 hover:underline">
-                      Utforska hela handboken
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              {/* Senaste Dokument */}
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <h2 className="text-lg font-semibold mb-3">Senaste dokument</h2>
-                {documents.length > 0 ? (
-                  <ul className="divide-y">
-                    {documents.map((doc: Document) => (
-                      <li key={doc.id} className="py-2">
-                        <Link href={`/documents/${doc.id}`} className="text-blue-600 hover:underline block">
-                          {doc.title}
-                        </Link>
-                        <p className="text-xs text-gray-500">
-                          {new Date(doc.updatedAt).toLocaleDateString('sv-SE')} • {doc.category}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-gray-500 text-sm">Inga dokument tillgängliga</p>
-                )}
-                <div className="mt-3 pt-3 border-t">
-                  <Link href="/documents" className="text-blue-600 hover:underline text-sm">
-                    Visa alla dokument
-                  </Link>
-                </div>
-              </div>
-
-              {/* Snabblänkar */}
-              <div className="bg-white p-6 rounded-lg shadow-sm">
-                <h2 className="text-lg font-semibold mb-3">Snabblänkar</h2>
-                <ul className="space-y-2">
-                  <li>
-                    <Link href="/profile" className="text-blue-600 hover:underline">
-                      Min profil
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/handbook" className="text-blue-600 hover:underline">
-                      Handbok
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/documents" className="text-blue-600 hover:underline">
-                      Dokument
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/issues" className="text-blue-600 hover:underline">
-                      Felanmälan
-                    </Link>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </>
-      ) : (
-        // Användaren är inte kopplad till en organisation
-        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-100 mb-8">
-          <h2 className="text-lg font-semibold text-yellow-800 mb-2">
-            Du är inte ansluten till någon bostadsrättsförening
-          </h2>
-          <p className="text-yellow-700 mb-4">
-            För att få åtkomst till din förenings handbok behöver du kopplas till rätt organisation.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link href="/join-organization" className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-md text-sm">
-              Anslut till en förening
-            </Link>
-            <Link href="/register?type=admin" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
-              Registrera en ny förening
+      } else {
+        console.log("[DASHBOARD] Användare hittad:", {
+          id: dbUser.id,
+          name: dbUser.name,
+          organizations: dbUser.organizations.length
+        });
+        
+        // Hämta användarens standardorganisation
+        defaultOrganization = dbUser.organizations[0]?.organization;
+      }
+    } else {
+      console.log("[DASHBOARD] Använder mock-användare i utvecklingsläge");
+      
+      // För mock-användare i utvecklingsläge: Skapa en tillfällig struktur
+      // med testdata istället för att söka i databasen
+      try {
+        // Försök hitta test-organisationen
+        const testOrg = await prisma.organization.findFirst({
+          where: { slug: 'test-brf' },
+        });
+        
+        if (testOrg) {
+          defaultOrganization = testOrg;
+          console.log("[DASHBOARD] Hittade test-organisation:", testOrg.name);
+        } else {
+          // Om ingen test-organisation finns, skapa en
+          defaultOrganization = {
+            id: 'mock-org-id',
+            name: 'Test BRF (Mock)',
+            slug: 'test-brf-mock',
+          };
+          console.log("[DASHBOARD] Använder mock-organisation");
+        }
+        
+        // Skapa en mock-användare
+        dbUser = {
+          id: user.id,
+          name: 'Utvecklare (Mock)',
+          email: user.email,
+        };
+      } catch (error) {
+        console.error("[DASHBOARD] Fel vid hämtning av testorganisation:", error);
+        defaultOrganization = {
+          id: 'mock-org-id',
+          name: 'Test BRF (Mock)',
+          slug: 'test-brf-mock',
+        };
+        
+        dbUser = {
+          id: user.id,
+          name: 'Utvecklare (Mock)',
+          email: user.email,
+        };
+      }
+    }
+    
+    // Om användaren inte har en organisation, visa förenklad vy
+    if (!defaultOrganization) {
+      console.log("[DASHBOARD] Ingen standardorganisation hittades");
+      return (
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h1 className="text-2xl font-bold mb-4">Välkommen till BRF Handbok</h1>
+            <p className="mb-4">Du är inloggad men inte kopplad till någon organisation.</p>
+            <Link href="/create-organization" className="bg-blue-600 text-white px-4 py-2 rounded">
+              Skapa organisation
             </Link>
           </div>
         </div>
-      )}
-
-      {/* Information nedan visas alltid */}
-      <div className="bg-white p-6 rounded-lg shadow-sm">
-        <h2 className="text-lg font-semibold mb-3">Din profil</h2>
-        <div className="mb-6">
-          <p className="mb-1">
-            <span className="font-medium">Namn:</span> {user.name || 'Ej angivet'}
-          </p>
-          <p className="mb-1">
-            <span className="font-medium">E-post:</span> {user.email}
-          </p>
-          <p>
-            <span className="font-medium">Roll:</span>{' '}
-            {user.role === UserRole.ADMIN
-              ? 'Administratör'
-              : user.role === UserRole.EDITOR
-              ? 'Redaktör'
-              : 'Medlem'}
-          </p>
+      );
+    }
+    
+    let bulletins = [];
+    let documents = [];
+    let activities = [];
+    
+    // Försök hämta data om vi inte använder mock-användare
+    if (!isMockUser) {
+      try {
+        // Kontrollera om Bulletin-modellen finns
+        const hasBulletinModel = !!prisma.bulletin;
+        const hasActivityModel = !!prisma.activity;
+        
+        // Hämta meddelanden om modellen finns
+        if (hasBulletinModel) {
+          bulletins = await prisma.bulletin.findMany({
+            where: { organizationId: defaultOrganization.id },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          }).catch(() => []);
+        }
+      
+        // Hämta dokument
+        documents = await prisma.document.findMany({
+          where: { organizationId: defaultOrganization.id },
+          orderBy: { updatedAt: 'desc' },
+          take: 5,
+        }).catch(() => []);
+      
+        // Hämta aktiviteter om modellen finns
+        if (hasActivityModel) {
+          activities = await prisma.activity.findMany({
+            where: { organizationId: defaultOrganization.id },
+            orderBy: { timestamp: 'desc' },
+            take: 10,
+          }).catch(() => []);
+        }
+      } catch (dataError) {
+        console.error("[DASHBOARD] Fel vid hämtning av data:", dataError);
+      }
+    } else {
+      // För mock-användare, skapa tillfällig mock-data
+      bulletins = [
+        { id: 'mock-1', title: 'Välkommen till dashboard', createdAt: new Date() },
+        { id: 'mock-2', title: 'Mock-bulletin för utveckling', createdAt: new Date() }
+      ];
+      
+      documents = [
+        { id: 'doc-1', title: 'Testdokument 1', updatedAt: new Date() },
+        { id: 'doc-2', title: 'Testdokument 2', updatedAt: new Date() }
+      ];
+    }
+    
+    // Visa dashboard
+    return (
+      <div className="container mx-auto px-4 py-8">
+        {/* Add client component for auth debugging */}
+        <ClientDashboard />
+        
+        <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Välkommen {dbUser?.name || "medlem"}</h2>
+            <p className="text-gray-600">
+              Du är inloggad i {defaultOrganization.name}
+              {isMockUser && <span className="text-amber-600 block mt-2">(Utvecklingsläge)</span>}
+            </p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Statistik</h2>
+            <p className="text-gray-600">
+              Dokument: {documents.length}
+            </p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Notifieringar</h2>
+            <p className="text-gray-600">
+              Du har inga nya notifieringar
+            </p>
+          </div>
         </div>
-        <Link href="/profile" className="text-blue-600 hover:underline">
-          Redigera profil
-        </Link>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Meddelanden</h2>
+            {bulletins.length > 0 ? (
+              <ul className="divide-y">
+                {bulletins.map((bulletin) => (
+                  <li key={bulletin.id} className="py-2">
+                    <p className="font-medium">{bulletin.title}</p>
+                    <p className="text-sm text-gray-600">{new Date(bulletin.createdAt).toLocaleDateString()}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600">Inga meddelanden att visa</p>
+            )}
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Dokument</h2>
+            {documents.length > 0 ? (
+              <ul className="divide-y">
+                {documents.map((document) => (
+                  <li key={document.id} className="py-2">
+                    <Link href={`/documents/${document.id}`} className="text-blue-600 hover:underline">
+                      {document.title}
+                    </Link>
+                    <p className="text-sm text-gray-600">{new Date(document.updatedAt).toLocaleDateString()}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600">Inga dokument att visa</p>
+            )}
+          </div>
+        </div>
+        
+        <div className="mt-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-2">Aktiviteter</h2>
+            {activities && activities.length > 0 ? (
+              <ul className="divide-y">
+                {activities.map((activity) => (
+                  <li key={activity.id} className="py-2">
+                    <p>{activity.description || 'Aktivitet'}</p>
+                    <p className="text-sm text-gray-600">{new Date(activity.timestamp || Date.now()).toLocaleDateString()}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600">Inga aktiviteter att visa</p>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  } catch (error) {
+    console.error("[DASHBOARD] Unexpected error:", error);
+    
+    // I utvecklingsläge, visa ett felmeddelande istället för att omdirigera
+    if (process.env.NODE_ENV === 'development') {
+      return (
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h1 className="text-2xl font-bold mb-4 text-red-600">Utvecklingsfel</h1>
+            <p className="mb-4">Ett fel uppstod i dashboard-sidan:</p>
+            <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm">
+              {error instanceof Error ? error.message : 'Okänt fel'}
+            </pre>
+            <div className="mt-4">
+              <Link href="/login" className="bg-blue-600 text-white px-4 py-2 rounded">
+                Tillbaka till inloggning
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // I produktion, omdirigera till login med felmeddelande
+    redirect('/login?error=unexpected');
+  }
 } 

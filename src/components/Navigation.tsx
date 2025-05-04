@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,16 @@ export default function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, isLoading, userRole, hasRole, organization } = useAuth();
   const pathname = usePathname();
+
+  // Add debugging for auth state
+  useEffect(() => {
+    console.log('Navigation auth state:', { 
+      isAuthenticated: !!user, 
+      isLoading, 
+      userEmail: user?.email,
+      userRole 
+    });
+  }, [user, isLoading, userRole]);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
