@@ -1,13 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-// Definiera konstanter för Supabase direkt i komponenten för att undvika problem med miljövariabler
-const SUPABASE_URL = 'https://lcckqvnwnrgvpnpavhyp.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjY2txdm53bnJndnBucGF2aHlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYxMzIyNzQsImV4cCI6MjA2MTcwODI3NH0.slMq0kzATuFHTX9mtEWiY80aLbSPSMbpzQs15dqg5Us';
+import { createBrowserClient } from '@/supabase-client';
 
 export default function SignInForm() {
   const [email, setEmail] = useState('');
@@ -18,24 +14,36 @@ export default function SignInForm() {
   
   // Hämta redirect-parametern från URL
   const searchParams = useSearchParams();
+  const router = useRouter();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
-
-  // Skapa en egen Supabase-klient direkt i komponenten
-  const createDirectSupabaseClient = () => {
-    try {
-      return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          storageKey: 'supabase.auth.token',
-        }
-      });
-    } catch (error) {
-      console.error('Kunde inte skapa direkt Supabase-klient:', error);
-      throw error;
+  
+  // Check for error parameter in URL
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      if (error === 'unexpected') {
+        setErrorMessage('Ett oväntat fel inträffade. Försök igen.');
+      } else if (error === 'auth-check-failed') {
+        setErrorMessage('Sessionsverifiering misslyckades. Logga in igen.');
+      } else {
+        setErrorMessage(`Inloggningsfel: ${error}`);
+      }
     }
-  };
+  }, [searchParams]);
+
+  // Test för att se om det finns några Supabase-cookies redan vid laddning
+  useEffect(() => {
+    const checkCookies = () => {
+      const allCookies = document.cookie.split(';').map(c => c.trim());
+      const supabaseCookies = allCookies.filter(c => 
+        c.startsWith('sb-') || c.includes('supabase')
+      );
+      
+      console.log('Befintliga Supabase-cookies vid laddning:', supabaseCookies);
+    };
+    
+    checkCookies();
+  }, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,113 +52,198 @@ export default function SignInForm() {
     setSuccessMessage(null);
 
     try {
-      // Använd den direkt skapade klienten
-      let supabase;
-      try {
-        console.log('Skapar direkt Supabase-klient för inloggning...');
-        supabase = createDirectSupabaseClient();
-      } catch (error: any) {
-        console.error('Kunde inte skapa Supabase-klient:', error);
-        throw new Error('Kunde inte ansluta till autentiseringstjänsten. Kontrollera att applikationen är korrekt konfigurerad.');
-      }
+      // Använd den delade browser-klienten
+      const supabase = createBrowserClient();
       
       console.log('Försöker logga in användare med e-post:', email);
+      
+      // Först, rensa eventuella befintliga sessioner för att undvika konflikt
+      console.log('Rensar befintlig session innan inloggning');
+      await supabase.auth.signOut();
+      
+      // Rensar också cookies manuellt för att säkerställa att gamla tokens tas bort
+      document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      
+      // Försök logga in
+      console.log('Anropar supabase.auth.signInWithPassword');
       const signInResult = await supabase.auth.signInWithPassword({
         email,
-        password,
+        password
       });
-
+      
+      // Lägg till loggning av resultatet
+      console.log('Inloggningsresultat:', {
+        success: !!signInResult.data.session,
+        error: signInResult.error?.message,
+        userId: signInResult.data.user?.id,
+        sessionExpires: signInResult.data.session?.expires_at
+      });
+      
       if (signInResult.error) {
-        console.error('Inloggningsfel från Supabase:', signInResult.error);
-        
-        // Översätt vanliga felmeddelanden från Supabase
-        if (signInResult.error.message.includes('Invalid login credentials')) {
-          throw new Error('Felaktigt användarnamn eller lösenord');
-        } else if (signInResult.error.message.includes('Email not confirmed')) {
-          throw new Error('E-postadressen har inte bekräftats. Kontrollera din inkorg och bekräfta din e-post först.');
-        } else if (signInResult.error.message.includes('Invalid API key')) {
-          throw new Error('Autentiseringsfel: API-nyckel saknas eller är ogiltig. Kontakta administratören.');
-        } else {
-          throw new Error(`Inloggningsfel: ${signInResult.error.message}`);
-        }
+        throw new Error(signInResult.error.message);
       }
 
-      console.log('Inloggning lyckades!');
-      // Inloggningen lyckades, omdirigera eller uppdatera UI
+      if (!signInResult.data.session) {
+        throw new Error('Ingen session skapades vid inloggning');
+      }
+
+      // För säkerhets skull, sätt Supabase-cookies manuellt
+      const session = signInResult.data.session;
+      const accessToken = session.access_token;
+      const refreshToken = session.refresh_token;
+      
+      // Sätt access token
+      document.cookie = `sb-access-token=${accessToken}; path=/; max-age=${60*60*24}; SameSite=Lax`;
+      
+      // Sätt refresh token
+      document.cookie = `sb-refresh-token=${refreshToken}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
+      
+      // Om vi är i utvecklingsmiljö, sätt också server-auth-cookie
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Sätter development auth cookie');
+        document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
+      }
+
+      // Kontrollera att cookies faktiskt sattes
+      console.log('Kontrollerar att cookies sattes:');
+      const allCookies = document.cookie.split(';').map(c => c.trim());
+      console.log('Cookies efter inloggning:', allCookies);
+
       setSuccessMessage('Inloggningen lyckades! Omdirigerar...');
       
-      // Omdirigera till dashboard eller annan sida efter en kort fördröjning
+      // Anropa session endpoint för att synkronisera server-side session
+      try {
+        console.log('Synkroniserar server-side session');
+        await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            accessToken, 
+            refreshToken 
+          }),
+        });
+      } catch (syncError) {
+        console.error('Kunde inte synkronisera server session:', syncError);
+      }
+      
+      // Kort fördröjning innan omdirigering för att säkerställa att cookies har sparats
       setTimeout(() => {
+        // Använd direkt omladdning istället för router för att säkerställa att alla cookies laddas
         window.location.href = redirectPath;
       }, 1000);
       
     } catch (error: any) {
-      setErrorMessage(error?.message || 'Ett fel uppstod vid inloggning');
       console.error('Inloggningsfel:', error);
+      setErrorMessage(error.message || 'Ett fel uppstod vid inloggning');
+      
+      // Om vi får ett felmeddelande relaterat till autentisering, försök igen med en annan metod
+      if (error.message && error.message.includes('auth')) {
+        try {
+          setErrorMessage('Provar alternativ inloggningsmetod...');
+          
+          const supabase = createBrowserClient();
+          
+          // Rensa befintlig session
+          await supabase.auth.signOut();
+          
+          // Använd email/password login
+          const { data, error: loginError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          
+          if (loginError) throw loginError;
+          
+          if (data && data.session) {
+            // Sätt cookies manuellt
+            const session = data.session;
+            document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${60*60*24}; SameSite=Lax`;
+            document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
+            
+            // Sätt cookie manuellt i utvecklingsmiljö
+            if (process.env.NODE_ENV === 'development') {
+              document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
+            }
+            
+            setSuccessMessage('Inloggningen lyckades med alternativ metod! Omdirigerar...');
+            
+            // Använd direkt omladdning
+            setTimeout(() => {
+              window.location.href = redirectPath;
+            }, 1000);
+          }
+        } catch (retryError) {
+          console.error('Andra inloggningsförsöket misslyckades:', retryError);
+          setErrorMessage('Båda inloggningsförsöken misslyckades. Kontrollera dina uppgifter och försök igen.');
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="w-full">
+    <form onSubmit={handleSignIn} className="space-y-6">
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+          E-post
+        </label>
+        <input
+          id="email"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          placeholder="din@epost.se"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+          Lösenord
+        </label>
+        <input
+          id="password"
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          placeholder="Ditt lösenord"
+        />
+      </div>
+
       {errorMessage && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+        <div className="text-red-600 text-sm">
           {errorMessage}
         </div>
       )}
-      
+
       {successMessage && (
-        <div className="mb-4 p-3 bg-green-100 text-green-700 rounded">
+        <div className="text-green-600 text-sm">
           {successMessage}
         </div>
       )}
-      
-      <form onSubmit={handleSignIn}>
-        <div className="mb-4">
-          <label htmlFor="email" className="block text-sm font-medium mb-1">
-            E-post
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={loading}
-          />
-        </div>
-        
-        <div className="mb-6">
-          <label htmlFor="password" className="block text-sm font-medium mb-1">
-            Lösenord
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={loading}
-          />
-        </div>
-        
+
+      <div>
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
         >
           {loading ? 'Loggar in...' : 'Logga in'}
         </button>
-      </form>
-      
-      <div className="mt-4 text-sm text-center">
+      </div>
+
+      <div className="text-sm text-center">
         <Link href="/forgot-password" className="text-blue-600 hover:underline">
           Glömt lösenord?
         </Link>
       </div>
-    </div>
+    </form>
   );
 } 
