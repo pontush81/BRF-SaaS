@@ -48,6 +48,7 @@ interface AuthContextType {
   refreshSession: () => Promise<void>;
   hasRole: (role: UserRole) => boolean;
   switchOrganization: (orgId: string) => Promise<void>;
+  setUser: (user: User | null) => void;
 }
 
 // Default context values
@@ -64,6 +65,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshSession: async () => {},
   hasRole: () => false,
   switchOrganization: async () => {},
+  setUser: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -312,6 +314,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     refreshSession,
     hasRole,
     switchOrganization,
+    setUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
