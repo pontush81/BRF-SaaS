@@ -266,8 +266,8 @@ export async function GET(req: NextRequest) {
         client: clientTest
       },
       proxy: {
-        url: '/api/supabase-proxy/health',
-        hint: 'Gör ett separat anrop till /api/supabase-proxy/health för att testa proxy-funktionaliteten'
+        url: '/api/proxy/health',
+        hint: 'Gör ett separat anrop till /api/proxy/health för att testa proxy-funktionaliteten'
       }
     };
     

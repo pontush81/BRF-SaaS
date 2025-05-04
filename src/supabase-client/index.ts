@@ -58,7 +58,7 @@ const checkUrlConnection = async (url: string): Promise<boolean> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const proxyHealthUrl = `/api/supabase-proxy/health`;
+      const proxyHealthUrl = `/api/proxy/health`;
       const response = await fetch(proxyHealthUrl, {
         method: 'GET',
         signal: controller.signal,
