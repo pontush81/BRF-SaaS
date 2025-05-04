@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import type { Session, User } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '@/lib/auth/roleUtils';
+import { Organization } from '@/types/organization';
 
 // Direct environment variables to avoid imports
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -24,15 +25,6 @@ const getSupabaseClient = () => {
 };
 
 // Types
-interface Organization {
-  id: string;
-  name: string;
-  slug: string;
-  domain?: string | null;
-  role: UserRole;
-  isDefault: boolean;
-}
-
 interface DatabaseUser {
   id: string;
   email: string;

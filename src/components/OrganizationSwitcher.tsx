@@ -3,17 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import { UserRole } from '@/lib/auth/roleUtils';
-
-// Interface för organisation
-interface Organization {
-  id: string;
-  name: string;
-  slug: string;
-  domain: string | null;
-  role: UserRole;
-  isDefault: boolean;
-}
+import { Organization } from '@/types/organization';
 
 export default function OrganizationSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
