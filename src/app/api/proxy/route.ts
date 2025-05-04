@@ -1,5 +1,3 @@
-'use server';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
@@ -14,7 +12,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Håll track på proxy-versionen
-const PROXY_VERSION = '1.2.0';
+const PROXY_VERSION = '1.3.0';
 
 // Logga initiering 
 console.log('[Proxy] Initializing simple proxy v' + PROXY_VERSION);
@@ -38,8 +36,33 @@ try {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, apikey, X-Supabase-Proxy',
+  'Access-Control-Max-Age': '86400',
 };
+
+// Lägg till headers på alla responses
+function addCorsHeaders(response: Response | NextResponse): NextResponse {
+  const headers = new Headers(response.headers);
+  
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    headers.set(key, value);
+  });
+  
+  // Om response är en NextResponse, sätt headers direkt
+  if (response instanceof NextResponse) {
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+    return response;
+  }
+  
+  // Annars skapa en ny NextResponse med samma body och status
+  return new NextResponse(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
 
 /**
  * Hanterar hälsokontroll av Supabase-anslutningen
@@ -48,21 +71,25 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
   const verbose = request.nextUrl.searchParams.get('verbose') === 'true';
   const startTime = Date.now();
   
+  // Logga exakt info om request för debugging
+  console.log('[Proxy/Health] Request URL:', request.url);
+  console.log('[Proxy/Health] Pathname:', new URL(request.url).pathname);
+  
   if (!SUPABASE_URL) {
-    console.error('Proxy health check failed: Missing Supabase URL');
+    console.error('[Proxy/Health] Health check failed: Missing Supabase URL');
     return NextResponse.json(
       { 
         reachable: false, 
         error: 'Missing Supabase URL configuration'
       }, 
-      { status: 500 }
+      { status: 200, headers: corsHeaders }
     );
   }
 
   try {
     // Testa anslutningen genom att göra en enkel begäran
     const healthEndpoint = `${SUPABASE_URL}/rest/v1/health?apikey=${SUPABASE_KEY}`;
-    console.log(`Performing health check for: ${SUPABASE_URL}`);
+    console.log(`[Proxy/Health] Performing health check for: ${SUPABASE_URL}`);
     
     const response = await fetch(healthEndpoint, {
       method: 'GET',
@@ -74,33 +101,55 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
     });
 
     const responseTime = Date.now() - startTime;
-    const responseData = await response.json();
     
-    if (response.ok) {
-      console.log(`Health check successful in ${responseTime}ms`);
-      return NextResponse.json({
-        reachable: true,
-        status: response.status,
-        responseTime,
-        data: verbose ? responseData : undefined
-      });
-    } else {
-      console.error(`Health check failed with status ${response.status}`);
+    try {
+      const responseData = await response.json();
+      
+      if (response.ok) {
+        console.log(`[Proxy/Health] Health check successful in ${responseTime}ms`);
+        return NextResponse.json({
+          reachable: true,
+          status: response.status,
+          responseTime,
+          data: verbose ? responseData : undefined
+        }, { headers: corsHeaders });
+      } else {
+        console.error(`[Proxy/Health] Health check failed with status ${response.status}`);
+        return NextResponse.json({
+          reachable: false,
+          status: response.status,
+          responseTime,
+          error: `Server responded with status ${response.status}`,
+          data: verbose ? responseData : undefined
+        }, { status: 200, headers: corsHeaders });
+      }
+    } catch (jsonError) {
+      console.error(`[Proxy/Health] Failed to parse response as JSON:`, jsonError);
+      
+      // Försök läsa response som text istället
+      let responseText;
+      try {
+        const responseClone = response.clone();
+        responseText = await responseClone.text();
+      } catch (e) {
+        responseText = 'Failed to read response as text';
+      }
+      
       return NextResponse.json({
         reachable: false,
         status: response.status,
         responseTime,
-        error: `Server responded with status ${response.status}`,
-        data: verbose ? responseData : undefined
-      }, { status: 200 }); // Still return 200 to client
+        error: `Failed to parse response as JSON: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`,
+        responsePreview: responseText?.substring(0, 100) + '...',
+      }, { status: 200, headers: corsHeaders });
     }
   } catch (error: any) {
-    console.error('Health check exception:', error.message);
+    console.error('[Proxy/Health] Health check exception:', error.message);
     return NextResponse.json({
       reachable: false,
       error: `Connection error: ${error.message}`,
       responseTime: Date.now() - startTime
-    }, { status: 200 }); // Still return 200 to client
+    }, { status: 200, headers: corsHeaders });
   }
 }
 
@@ -108,6 +157,8 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
  * Hanterar debugging-information
  */
 async function handleDebug(request: NextRequest): Promise<NextResponse> {
+  console.log('[Proxy/Debug] Debug endpoint called');
+  
   const cookieStore = cookies();
   const allCookies: Record<string, string> = {};
   
@@ -116,22 +167,32 @@ async function handleDebug(request: NextRequest): Promise<NextResponse> {
     allCookies[cookie.name] = cookie.value;
   }
   
+  const requestInfo = {
+    url: request.url,
+    method: request.method,
+    headers: Object.fromEntries(request.headers.entries()),
+    cookies: Object.keys(allCookies).map(name => ({ name, hasValue: !!allCookies[name] })),
+  };
+  
+  console.log('[Proxy/Debug] Request info:', JSON.stringify(requestInfo, null, 2));
+  
   return NextResponse.json({
     timestamp: new Date().toISOString(),
+    version: PROXY_VERSION,
     environment: {
       nodeEnv: process.env.NODE_ENV || 'development',
       vercelEnv: process.env.VERCEL_ENV || 'local',
       region: process.env.VERCEL_REGION || 'unknown',
       supabaseUrl: SUPABASE_URL,
       hasKey: !!SUPABASE_KEY,
+      projectId,
     },
-    request: {
-      method: request.method,
-      url: request.url,
-      headers: Object.fromEntries(request.headers),
-    },
-    cookies: allCookies,
-  });
+    request: requestInfo,
+    paths: {
+      original: request.nextUrl.pathname,
+      parsed: new URL(request.url).pathname,
+    }
+  }, { headers: corsHeaders });
 }
 
 /**
@@ -139,39 +200,51 @@ async function handleDebug(request: NextRequest): Promise<NextResponse> {
  */
 async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
   if (!SUPABASE_URL) {
-    console.error('Proxy forward failed: Missing Supabase URL');
+    console.error('[Proxy/Forward] Failed: Missing Supabase URL');
     return NextResponse.json(
       { error: 'Supabase URL is not configured' }, 
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 
   if (!SUPABASE_KEY) {
-    console.error('Proxy forward failed: Missing Supabase API key');
+    console.error('[Proxy/Forward] Failed: Missing Supabase API key');
     return NextResponse.json(
       { error: 'Supabase API key is not configured' }, 
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 
   try {
     // Extrahera sökvägen från begäran (allt efter /api/proxy)
     const url = new URL(request.url);
-    const path = url.pathname.replace(/^\/api\/proxy/, '');
+    const originalPath = url.pathname;
+    
+    // Hantera både /api/proxy och /api/proxy/ prefix
+    let path = originalPath.replace(/^\/api\/proxy\/?/, '');
+    
+    // Lägg till ett / i början om det saknas
+    if (!path.startsWith('/')) {
+      path = '/' + path;
+    }
+    
+    console.log(`[Proxy/Forward] Path extraction: Original: ${originalPath}, Extracted: ${path}`);
     
     if (!path || path === '/') {
+      console.error('[Proxy/Forward] Invalid path after extraction');
       return NextResponse.json(
-        { error: 'Invalid path' }, 
-        { status: 400 }
+        { error: 'Invalid path', originalPath, extractedPath: path }, 
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const targetUrl = `${SUPABASE_URL}${path}${url.search}`;
-    console.log(`Forwarding request to: ${targetUrl}`);
+    console.log(`[Proxy/Forward] Forwarding to: ${targetUrl}`);
 
     // Kopiera originalheadrar men lägg till Supabase-specifika headrar
     const headers = new Headers(request.headers);
     headers.set('apikey', SUPABASE_KEY);
+    headers.set('X-Client-Info', 'supabase-proxy/' + PROXY_VERSION);
     
     // Ta bort headers som kan orsaka problem
     headers.delete('host');
@@ -185,7 +258,9 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     });
 
     // Skicka begäran till Supabase
+    console.log(`[Proxy/Forward] Sending ${request.method} request to Supabase`);
     const supabaseResponse = await fetch(supabaseRequest);
+    console.log(`[Proxy/Forward] Response from Supabase: ${supabaseResponse.status} ${supabaseResponse.statusText}`);
     
     // Transformera svaret för att kunna returnera till klienten
     const responseBody = await supabaseResponse.blob();
@@ -197,9 +272,9 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     });
     
     // Lägg till CORS-headrar
-    responseHeaders.set('Access-Control-Allow-Origin', '*');
-    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    responseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      responseHeaders.set(key, value);
+    });
     
     return new NextResponse(responseBody, {
       status: supabaseResponse.status,
@@ -207,10 +282,10 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
       headers: responseHeaders,
     });
   } catch (error: any) {
-    console.error('Proxy forward error:', error);
+    console.error('[Proxy/Forward] Error:', error);
     return NextResponse.json(
       { error: `Proxy error: ${error.message}` }, 
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -219,13 +294,10 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
  * OPTIONS-hanterare för CORS
  */
 export async function OPTIONS(request: NextRequest) {
+  console.log(`[Proxy] OPTIONS request to: ${request.url}`);
   return new NextResponse(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
-    },
+    headers: corsHeaders,
+    status: 204,
   });
 }
 
@@ -233,18 +305,47 @@ export async function OPTIONS(request: NextRequest) {
  * GET-hanterare för proxy
  */
 export async function GET(request: NextRequest) {
+  // Logga full URL för felsökning
+  console.log(`[Proxy] Full request URL: ${request.url}`);
+  console.log(`[Proxy] Request method: ${request.method}`);
+  console.log(`[Proxy] Request headers:`, Object.fromEntries(request.headers.entries()));
+  
   const url = new URL(request.url);
   const path = url.pathname;
   
-  // Loggning för att hjälpa till med felsökning
-  console.log(`GET request to: ${path}`);
+  console.log(`[Proxy] Parsed pathname: ${path}`);
+  
+  // Enkel diagnostik för rotanrop till /api/proxy
+  if (path === '/api/proxy' || path === '/api/proxy/') {
+    console.log('[Proxy] Root endpoint called, returning diagnostics');
+    return NextResponse.json({
+      status: 'ok',
+      version: PROXY_VERSION,
+      timestamp: new Date().toISOString(),
+      endpoints: {
+        health: `${url.origin}/api/proxy/health`,
+        debug: `${url.origin}/api/proxy/debug`
+      },
+      environment: {
+        node_env: process.env.NODE_ENV,
+        vercel: !!process.env.VERCEL,
+        vercel_env: process.env.VERCEL_ENV || 'not-set'
+      }
+    }, { 
+      status: 200,
+      headers: corsHeaders
+    });
+  }
   
   // Hantera olika endpunkter
   if (path.endsWith('/health')) {
+    console.log('[Proxy] Health endpoint called');
     return handleHealthCheck(request);
   } else if (path.endsWith('/debug')) {
+    console.log('[Proxy] Debug endpoint called');
     return handleDebug(request);
   } else {
+    console.log(`[Proxy] Forwarding request to Supabase: ${path}`);
     return forwardToSupabase(request);
   }
 }
@@ -253,6 +354,7 @@ export async function GET(request: NextRequest) {
  * POST-hanterare för proxy
  */
 export async function POST(request: NextRequest) {
+  console.log(`[Proxy] POST request to: ${request.url}`);
   return forwardToSupabase(request);
 }
 
@@ -260,6 +362,7 @@ export async function POST(request: NextRequest) {
  * PUT-hanterare för proxy
  */
 export async function PUT(request: NextRequest) {
+  console.log(`[Proxy] PUT request to: ${request.url}`);
   return forwardToSupabase(request);
 }
 
@@ -267,6 +370,7 @@ export async function PUT(request: NextRequest) {
  * DELETE-hanterare för proxy
  */
 export async function DELETE(request: NextRequest) {
+  console.log(`[Proxy] DELETE request to: ${request.url}`);
   return forwardToSupabase(request);
 }
 
@@ -274,5 +378,6 @@ export async function DELETE(request: NextRequest) {
  * PATCH-hanterare för proxy
  */
 export async function PATCH(request: NextRequest) {
+  console.log(`[Proxy] PATCH request to: ${request.url}`);
   return forwardToSupabase(request);
 } 
