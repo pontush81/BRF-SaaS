@@ -257,7 +257,7 @@ export default function SignInForm() {
       }
       
       // Om vi är i utvecklingsmiljö, sätt också server-auth-cookie
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV !== 'production') {
         console.log('Sätter development auth cookie');
         document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
       }
@@ -302,7 +302,7 @@ export default function SignInForm() {
           setErrorMessage('Provar alternativ inloggningsmetod...');
           
           // Mock-inloggning i utvecklingsläge
-          if (process.env.NODE_ENV === 'development') {
+          if (process.env.NODE_ENV !== 'production') {
             console.log('Använder utvecklingsläge-mockad inloggning');
             
             // Sätt mock-cookies
@@ -341,7 +341,7 @@ export default function SignInForm() {
             document.cookie = `sb-refresh-token=${session.refresh_token}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
             
             // Sätt cookie manuellt i utvecklingsmiljö
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV !== 'production') {
               document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
             }
             
