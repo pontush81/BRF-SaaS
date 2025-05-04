@@ -1,26 +1,149 @@
 /**
  * Re-export file for supabase-server functions
  * 
- * This file exports the key functions from supabase-server.ts
- * without creating circular dependencies.
- * 
- * These implementations simply re-route to the actual functions
- * in the parent file, allowing @/supabase-server to be imported
- * while avoiding import loops.
+ * This file provides implementations that avoid circular dependencies
+ * by directly wrapping functionality without import cycles.
  */
 
-// Import from supabase-js for type definitions only
 import { createClient } from '@supabase/supabase-js';
 
-// Re-export the functions directly
+// Environment variables
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+// Direct implementation to avoid circular imports completely
 export const createServerClient = (cookieStore?: any) => {
-  // Dynamically import to avoid circular references
-  const supabaseServer = require('../supabase-server');
-  return supabaseServer.createServerClient(cookieStore);
+  try {
+    console.log("[supabase-server/index] Creating server client");
+    
+    // In development mode, we can return a simplified client
+    if (isDevelopment) {
+      const mockClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true
+        }
+      });
+      
+      // Add mocked auth methods for development
+      mockClient.auth = {
+        ...mockClient.auth,
+        getUser: async () => {
+          const mockCookies = cookieStore ? 
+            Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
+            {};
+          
+          if (mockCookies['supabase-dev-auth'] === 'true') {
+            return { 
+              data: { 
+                user: {
+                  id: '12345-mock-server-user-id',
+                  email: 'dev@example.com',
+                  app_metadata: {},
+                  user_metadata: { name: 'Server Utvecklare' },
+                  created_at: new Date().toISOString()
+                } 
+              }, 
+              error: null 
+            };
+          }
+          
+          return { data: { user: null }, error: null };
+        }
+      };
+      
+      return mockClient;
+    }
+    
+    // Basic auth configuration
+    const authConfig = {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    };
+    
+    // Create client with cookies if available
+    if (cookieStore) {
+      return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: authConfig,
+        global: {
+          headers: {
+            'X-Client-Info': 'supabase-js-server/nextjs'
+          }
+        },
+        cookies: {
+          get(name) {
+            try {
+              return cookieStore.get(name)?.value;
+            } catch (error) {
+              console.error("Error getting cookie:", error);
+              return undefined;
+            }
+          },
+          set(name, value, options) {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              console.warn('Cookies can only be set in route handlers or Server Actions');
+            }
+          },
+          remove(name, options) {
+            try {
+              cookieStore.set({ name, value: '', ...options, maxAge: 0 });
+            } catch (error) {
+              console.warn('Cookies can only be removed in route handlers or Server Actions');
+            }
+          }
+        }
+      });
+    }
+    
+    // Fallback to service role client
+    return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: authConfig });
+  } catch (error) {
+    console.error("[supabase-server/index] Error creating client:", error);
+    throw error;
+  }
 };
 
+// Direct implementation of getServerSideUser
 export const getServerSideUser = async (cookieStore: any) => {
-  // Dynamically import to avoid circular references
-  const supabaseServer = require('../supabase-server');
-  return supabaseServer.getServerSideUser(cookieStore);
+  try {
+    if (!cookieStore) {
+      return null;
+    }
+    
+    // In development mode, check for special cookie
+    if (isDevelopment) {
+      const hasDevCookie = cookieStore.get('supabase-dev-auth')?.value === 'true';
+      
+      if (hasDevCookie) {
+        return {
+          id: '12345-mock-server-user-id',
+          email: 'dev@example.com',
+        };
+      }
+      
+      return null;
+    }
+    
+    // Create client and get user
+    const supabase = createServerClient(cookieStore);
+    const { data, error } = await supabase.auth.getUser();
+    
+    if (error || !data.user || !data.user.email) {
+      return null;
+    }
+    
+    return {
+      id: data.user.id,
+      email: data.user.email,
+    };
+  } catch (error) {
+    console.error("[supabase-server/index] Error getting user:", error);
+    return null;
+  }
 }; 
