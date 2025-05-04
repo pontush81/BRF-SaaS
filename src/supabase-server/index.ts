@@ -7,7 +7,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient as createSSRClient } from '@supabase/ssr';
-import type { User, UserResponse, CookieOptions } from '@supabase/supabase-js';
+import type { User, UserResponse } from '@supabase/supabase-js';
+import type { CookieOptions } from '@supabase/ssr';
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
