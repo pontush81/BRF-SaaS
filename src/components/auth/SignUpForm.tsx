@@ -74,11 +74,11 @@ export default function SignUpForm({ isAdmin = false, orgSlug = '' }: SignUpForm
         supabase = createDirectSupabaseClient();
         
         // Verifiera att klienten har skapats korrekt
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error('Kunde inte verifiera Supabase-session:', sessionError);
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error('Kunde inte verifiera Supabase-session:', userError);
         } else {
-          console.log('Supabase-anslutning fungerande:', sessionData?.session ? 'Aktiv session' : 'Ingen session');
+          console.log('Supabase-anslutning fungerande:', userData?.user ? 'Aktiv session' : 'Ingen session');
         }
       } catch (error: any) {
         console.error('Kunde inte skapa direkta Supabase-klienten:', error);

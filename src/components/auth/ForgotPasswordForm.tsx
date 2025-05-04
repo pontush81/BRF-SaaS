@@ -1,7 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { createBrowserSupabaseClient } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Miljövariabler för Supabase
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState('');
@@ -16,7 +20,13 @@ export default function ForgotPasswordForm() {
     setSuccessMessage(null);
 
     try {
-      const supabase = createBrowserSupabaseClient();
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true
+        }
+      });
       
       // URL för återställning, denna sida måste hantera "?token=" parametern
       const resetPasswordURL = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`;

@@ -57,18 +57,30 @@ export const userRepository = {
    * Hämtar en användare med alla dess organisationer
    */
   async getUserWithOrganizations(email: string): Promise<UserWithOrganizations | null> {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        organizations: {
-          include: {
-            organization: true
+    console.log(`[userRepository] Attempting to find user with email: ${email}`);
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          organizations: {
+            include: {
+              organization: true
+            }
           }
         }
-      }
-    });
-    
-    return user ? convertPrismaUserToAppUser(user as any) : null;
+      });
+      
+      console.log(`[userRepository] User fetch result:`, { 
+        found: !!user,
+        userId: user?.id,
+        organizationsCount: user?.organizations?.length || 0 
+      });
+      
+      return user ? convertPrismaUserToAppUser(user as any) : null;
+    } catch (error) {
+      console.error(`[userRepository] Error fetching user with email ${email}:`, error);
+      throw error;
+    }
   },
 
   /**

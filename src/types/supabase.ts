@@ -1,3 +1,14 @@
+import { SupabaseClient } from '@supabase/supabase-js';
+import { Database } from './database.types'; // Du behöver generera detta från din Supabase-projekt
+
+export type TypedSupabaseClient = SupabaseClient<Database>;
+
+declare global {
+  interface Window {
+    __supabaseClient?: TypedSupabaseClient;
+  }
+}
+
 export type Json =
   | string
   | number

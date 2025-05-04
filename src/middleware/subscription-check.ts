@@ -4,7 +4,7 @@ import { getOrganizationBySlug } from '@/lib/organizations';
 
 // Exempt routes that should always be accessible
 const EXEMPT_ROUTES = [
-  '/api/stripe',
+  '/api/',
   '/login',
   '/register',
   '/subscription',
@@ -27,9 +27,10 @@ export async function checkSubscription(request: NextRequest, organizationId: st
     const path = request.nextUrl.pathname;
     
     // Check if the current route is exempt
-    const isExempt = EXEMPT_ROUTES.some(route => path.startsWith(route));
-    if (isExempt) {
-      return null; // No redirect needed for exempt routes
+    for (const route of EXEMPT_ROUTES) {
+      if (path.startsWith(route)) {
+        return null; // No redirect needed for exempt routes
+      }
     }
     
     // Otherwise, redirect to subscription page
@@ -37,7 +38,9 @@ export async function checkSubscription(request: NextRequest, organizationId: st
     return NextResponse.redirect(subscriptionUrl);
   } catch (error) {
     console.error('Error checking subscription:', error);
-    return null; // On error, let them through (failsafe)
+    // On error, we'll let them through for now (failsafe)
+    // This prevents users from being locked out if there's a database/API issue
+    return null;
   }
 }
 
