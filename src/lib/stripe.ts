@@ -280,8 +280,10 @@ export async function createInvoiceSubscription({
     });
 
     // Finalize and send the invoice
-    await stripe.invoices.finalizeInvoice(invoice.id);
-    await stripe.invoices.sendInvoice(invoice.id);
+    if (invoice && invoice.id) {
+      await stripe.invoices.finalizeInvoice(invoice.id);
+      await stripe.invoices.sendInvoice(invoice.id);
+    }
 
     // Log in non-production environments
     if (!isProd) {
