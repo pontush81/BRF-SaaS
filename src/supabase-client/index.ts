@@ -103,7 +103,7 @@ export const createBrowserClient = () => {
             };
             
             return { 
-              data: { session: mockSession }, 
+              data: { session: mockSession, user: mockUser }, 
               error: null 
             };
           };
