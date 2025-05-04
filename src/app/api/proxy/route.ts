@@ -216,29 +216,35 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Extrahera sökvägen från begäran (allt efter /api/proxy)
     const url = new URL(request.url);
+    
+    // Använd samma path-extraktion som i GET-hanteraren för att vara konsekvent
     const originalPath = url.pathname;
+    let pathSegments = originalPath.split('/');
+    pathSegments = pathSegments.filter(segment => segment.length > 0);
     
-    // Hantera både /api/proxy och /api/proxy/ prefix
-    let path = originalPath.replace(/^\/api\/proxy\/?/, '');
-    
-    // Lägg till ett / i början om det saknas
-    if (!path.startsWith('/')) {
-      path = '/' + path;
+    // Ta bort "api" och "proxy" från sökvägen
+    let supabasePath = '';
+    if (pathSegments.length >= 2 && pathSegments[0] === 'api' && pathSegments[1] === 'proxy') {
+      pathSegments = pathSegments.slice(2);
+      // Bygg sökväg för Supabase-anropet
+      supabasePath = '/' + pathSegments.join('/');
+    } else {
+      // Fallback om vi inte hittar förväntad struktur
+      supabasePath = originalPath.replace(/^\/api\/proxy\/?/, '/');
     }
     
-    console.log(`[Proxy/Forward] Path extraction: Original: ${originalPath}, Extracted: ${path}`);
+    console.log(`[Proxy/Forward] Path extraction: Original: ${originalPath}, Extracted: ${supabasePath}`);
     
-    if (!path || path === '/') {
+    if (!supabasePath || supabasePath === '/') {
       console.error('[Proxy/Forward] Invalid path after extraction');
       return NextResponse.json(
-        { error: 'Invalid path', originalPath, extractedPath: path }, 
+        { error: 'Invalid path', originalPath, extractedPath: supabasePath }, 
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const targetUrl = `${SUPABASE_URL}${path}${url.search}`;
+    const targetUrl = `${SUPABASE_URL}${supabasePath}${url.search}`;
     console.log(`[Proxy/Forward] Forwarding to: ${targetUrl}`);
 
     // Kopiera originalheadrar men lägg till Supabase-specifika headrar
@@ -315,8 +321,21 @@ export async function GET(request: NextRequest) {
   
   console.log(`[Proxy] Parsed pathname: ${path}`);
   
-  // Enkel diagnostik för rotanrop till /api/proxy
-  if (path === '/api/proxy' || path === '/api/proxy/') {
+  // Mer detaljerad path-analys för Vercel-miljön
+  // Extrahera sökvägen från /api/proxy
+  let pathSegments = path.split('/');
+  // Ta bort tomma segment (från leading/trailing slashes)
+  pathSegments = pathSegments.filter(segment => segment.length > 0);
+  // Plocka bort "api" och "proxy" om de finns
+  if (pathSegments.length >= 2 && pathSegments[0] === 'api' && pathSegments[1] === 'proxy') {
+    // Ta bort api och proxy från sökvägen
+    pathSegments = pathSegments.slice(2);
+  }
+  
+  console.log(`[Proxy] Path segments after extraction:`, pathSegments);
+  
+  // Enkel diagnostik för rotanrop till /api/proxy - när inga ytterligare segment finns
+  if (pathSegments.length === 0) {
     console.log('[Proxy] Root endpoint called, returning diagnostics');
     return NextResponse.json({
       status: 'ok',
@@ -337,15 +356,17 @@ export async function GET(request: NextRequest) {
     });
   }
   
-  // Hantera olika endpunkter
-  if (path.endsWith('/health')) {
+  // Hantera olika endpunkter baserat på första segmentet efter /api/proxy/
+  const firstSegment = pathSegments[0];
+  
+  if (firstSegment === 'health') {
     console.log('[Proxy] Health endpoint called');
     return handleHealthCheck(request);
-  } else if (path.endsWith('/debug')) {
+  } else if (firstSegment === 'debug') {
     console.log('[Proxy] Debug endpoint called');
     return handleDebug(request);
   } else {
-    console.log(`[Proxy] Forwarding request to Supabase: ${path}`);
+    console.log(`[Proxy] Forwarding request to Supabase, segments:`, pathSegments);
     return forwardToSupabase(request);
   }
 }
