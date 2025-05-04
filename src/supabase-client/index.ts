@@ -328,17 +328,36 @@ export const createBrowserClient = () => {
       mockClient.auth = {
         ...originalAuth,
         // Ersätt kritiska metoder med mock-implementationer
-        signInWithPassword: async () => {
-          console.log('[supabase-client/mock] Mock signInWithPassword called');
+        signInWithPassword: async (credentials: { email?: string; phone?: string; password: string }) => {
+          console.log('[supabase-client/mock] Mock signInWithPassword called', credentials.email || 'no email');
+          
+          // Skapa en korrekt typad mock-användare
+          const mockUser: User = { 
+            id: 'mock-user', 
+            email: credentials.email || 'mock@example.com',
+            app_metadata: { provider: 'email' },
+            user_metadata: { name: 'Mock User' },
+            aud: 'authenticated',
+            created_at: new Date().toISOString(),
+            role: 'authenticated',
+            updated_at: new Date().toISOString(),
+            phone: credentials.phone || null
+          };
+          
+          // Skapa en korrekt typad session
+          const mockSession: Session = {
+            access_token: 'mock-token', 
+            refresh_token: 'mock-refresh',
+            expires_in: 3600,
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+            token_type: 'bearer',
+            user: mockUser
+          };
+          
           return {
-            data: {
-              user: { id: 'mock-user', email: 'mock@example.com' } as User,
-              session: { 
-                access_token: 'mock-token', 
-                refresh_token: 'mock-refresh',
-                expires_in: 3600,
-                token_type: 'bearer' 
-              }
+            data: { 
+              user: mockUser,
+              session: mockSession
             },
             error: null
           };
