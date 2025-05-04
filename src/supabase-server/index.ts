@@ -5,19 +5,8 @@
  * by directly wrapping functionality without import cycles.
  */
 
-import { createClient, User } from '@supabase/supabase-js';
-
-// Helper type definitions to match Supabase auth types
-type AuthError = {
-  name: string;
-  message: string;
-  status?: number;
-};
-
-type UserResponse = {
-  data: { user: User | null };
-  error: AuthError | null;
-};
+import { createClient } from '@supabase/supabase-js';
+import type { User, UserResponse } from '@supabase/supabase-js';
 
 // Environment variables
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -43,7 +32,10 @@ export const createServerClient = (cookieStore?: any) => {
       // Add mocked auth methods for development
       mockClient.auth = {
         ...mockClient.auth,
-        getUser: async (): Promise<UserResponse> => {
+        // Match exact signature with optional jwt parameter
+        getUser: async (jwt?: string): Promise<UserResponse> => {
+          console.log('[Server] Mock getUser called', jwt ? 'with JWT' : 'without JWT');
+          
           const mockCookies = cookieStore ? 
             Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
             {};
@@ -53,12 +45,13 @@ export const createServerClient = (cookieStore?: any) => {
             const mockUser: User = {
               id: '12345-mock-server-user-id',
               email: 'dev@example.com',
-              app_metadata: {},
+              app_metadata: { provider: 'email' },
               user_metadata: { name: 'Server Utvecklare' },
               aud: 'authenticated',
               created_at: new Date().toISOString(),
-              role: '',
-              confirmed_at: new Date().toISOString()
+              role: 'authenticated',
+              updated_at: new Date().toISOString(),
+              phone: null
             };
             
             return { 
