@@ -5,5 +5,7 @@
  * with the path alias configuration.
  */
 
-// Export everything from the client file
-export * from '../supabase-client'; 
+// Re-export specific functions from the original file
+// Using explicit imports/exports instead of export * to avoid circular reference issues
+import { createBrowserClient, getSupabaseBrowser } from '../supabase-client';
+export { createBrowserClient, getSupabaseBrowser }; 

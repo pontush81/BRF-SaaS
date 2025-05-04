@@ -15,9 +15,9 @@ import { createClient, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KE
 // Re-export everything for compatibility
 export { createClient, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY };
 
-// Import from server file and re-export for compatibility
-import { createServerClient } from '../supabase-server';
-export { createServerClient };
+// Import directly from the server file instead of the re-export to avoid circular references
+import { createServerClient, getServerSideUser } from '../supabase-server';
+export { createServerClient, getServerSideUser };
 
 // For ForgotPasswordForm.tsx that's looking for this function
 export const createBrowserSupabaseClient = () => {
@@ -35,6 +35,7 @@ export default {
   createClient,
   createServerClient,
   createBrowserSupabaseClient,
+  getServerSideUser,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY
