@@ -1,323 +1,403 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button, Card, Text, Container, Title, Badge, Divider, Group, Code, Box, Stack, Alert } from '@mantine/core';
-import { IconServer, IconCloud, IconNetwork, IconAlertCircle, IconCheck, IconX } from '@tabler/icons-react';
+import { 
+  Button, 
+  Container, 
+  Title, 
+  Text, 
+  Stack, 
+  Group, 
+  Alert, 
+  Card, 
+  List, 
+  Divider, 
+  Accordion, 
+  Badge,
+  Code,
+  Loader,
+  Paper,
+  ScrollArea
+} from '@mantine/core';
+import { IconAlertCircle, IconRefresh, IconCheck, IconX } from '@tabler/icons-react';
+import { createClient } from '@supabase/supabase-js';
 
-// Definiera datastrukturen för diagnostikdata
-interface DiagnosticData {
+type DiagnosticData = {
   timestamp: string;
+  processingTime: number;
   environment: {
-    isVercel: boolean;
     nodeEnv: string;
-    runtime: string;
-    region?: string;
+    vercelEnv: string;
+    region: string;
+    supabaseUrl: string;
+    supabaseKey: string | null;
+    hasKey: boolean;
   };
-  supabase: {
-    url: string;
-    projectId?: string;
-  };
-  connectionTests?: {
-    direct?: {
-      status: boolean;
+  cookies: Record<string, string>;
+  connectionTests: {
+    directSupabase: {
+      url: string;
+      success: boolean;
+      responseTime: number;
+      errorMessage?: string;
       statusCode?: number;
-      error?: string;
-      responseTime?: number;
     };
-    proxy?: {
-      status: boolean;
+    proxySupabase: {
+      url: string;
+      success: boolean;
+      responseTime: number;
+      errorMessage?: string;
       statusCode?: number;
-      error?: string;
-      responseTime?: number;
+    };
+    projectPage: {
+      url: string;
+      success: boolean;
+      responseTime: number;
+      errorMessage?: string;
+      statusCode?: number;
     };
   };
-  error?: string;
-}
+};
 
 export default function DiagnosticsPage() {
-  const [loading, setLoading] = useState<boolean>(false);
-  const [directTestLoading, setDirectTestLoading] = useState<boolean>(false);
-  const [proxyTestLoading, setProxyTestLoading] = useState<boolean>(false);
-  const [diagnosticData, setDiagnosticData] = useState<DiagnosticData | null>(null);
-  const [directTestResult, setDirectTestResult] = useState<any>(null);
-  const [proxyTestResult, setProxyTestResult] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<DiagnosticData | null>(null);
+  const [clientDiagnostics, setClientDiagnostics] = useState<{
+    clientSupabase: boolean;
+    clientSupabaseError?: string;
+    userAgent: string;
+    language: string;
+    cookiesEnabled: boolean;
+    localStorageAvailable: boolean;
+    connectionType?: string;
+    dnsTest?: {
+      success: boolean;
+      error?: string;
+    };
+  } | null>(null);
 
-  // Ladda diagnostikdata när sidan laddas
-  useEffect(() => {
-    fetchDiagnostics();
-  }, []);
-
-  // Hämta diagnostikdata från API
-  const fetchDiagnostics = async () => {
+  const runDiagnostics = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await fetch('/api/proxy/debug', {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store'
-        }
-      });
+      // Perform server diagnostics
+      const response = await fetch('/api/debug');
+      const serverData = await response.json();
+      setData(serverData);
       
-      if (!response.ok) {
-        throw new Error(`Server svarade med status: ${response.status}`);
+      // Perform client diagnostics
+      const clientDiags = {
+        userAgent: window.navigator.userAgent,
+        language: window.navigator.language,
+        cookiesEnabled: navigator.cookieEnabled,
+        localStorageAvailable: !!window.localStorage,
+        connectionType: (navigator as any).connection 
+          ? (navigator as any).connection.effectiveType 
+          : 'unknown',
+      };
+      
+      // Test client-side Supabase connection
+      try {
+        const supabaseUrl = serverData.environment.supabaseUrl;
+        if (!supabaseUrl) throw new Error('No Supabase URL available');
+        
+        // Only create client if URL is available - use anonymous key for test
+        const supabase = createClient(supabaseUrl, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0');
+        
+        // Test a harmless query
+        const { error: supabaseError } = await supabase.from('health_check').select('*').limit(1);
+        
+        setClientDiagnostics({
+          ...clientDiags,
+          clientSupabase: !supabaseError,
+          clientSupabaseError: supabaseError?.message,
+        });
+      } catch (clientError: any) {
+        setClientDiagnostics({
+          ...clientDiags,
+          clientSupabase: false,
+          clientSupabaseError: clientError.message,
+        });
       }
-      
-      const data = await response.json();
-      setDiagnosticData(data);
-    } catch (error) {
-      console.error('Fel vid hämtning av diagnostik:', error);
-      setError(error instanceof Error ? error.message : 'Okänt fel vid hämtning av diagnostik');
+    } catch (e: any) {
+      setError(`Failed to run diagnostics: ${e.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Testa direktanslutning till Supabase
-  const testDirectConnection = async () => {
-    setDirectTestLoading(true);
-    setDirectTestResult(null);
-    
-    try {
-      const startTime = performance.now();
-      const response = await fetch('/api/proxy/test-direct', {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store'
-        }
-      });
-      const endTime = performance.now();
-      
-      const responseData = await response.json();
-      setDirectTestResult({
-        ...responseData,
-        responseTime: Math.round(endTime - startTime)
-      });
-    } catch (error) {
-      console.error('Fel vid test av direktanslutning:', error);
-      setDirectTestResult({
-        status: false,
-        error: error instanceof Error ? error.message : 'Okänt fel vid test av direktanslutning'
-      });
-    } finally {
-      setDirectTestLoading(false);
-    }
-  };
+  useEffect(() => {
+    runDiagnostics();
+  }, []);
 
-  // Testa proxyanslutning till Supabase
-  const testProxyConnection = async () => {
-    setProxyTestLoading(true);
-    setProxyTestResult(null);
-    
+  const formatDate = (dateString: string) => {
     try {
-      const startTime = performance.now();
-      const response = await fetch('/api/proxy/health?verbose=true', {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store'
-        }
-      });
-      const endTime = performance.now();
-      
-      const responseData = await response.json();
-      setProxyTestResult({
-        ...responseData,
-        responseTime: Math.round(endTime - startTime)
-      });
-    } catch (error) {
-      console.error('Fel vid test av proxyanslutning:', error);
-      setProxyTestResult({
-        status: false,
-        error: error instanceof Error ? error.message : 'Okänt fel vid test av proxyanslutning'
-      });
-    } finally {
-      setProxyTestLoading(false);
+      const date = new Date(dateString);
+      return date.toLocaleString();
+    } catch (e) {
+      return dateString;
     }
   };
 
   return (
     <Container size="lg" py="xl">
-      <Title order={1} mb="md">Systemdiagnostik</Title>
-      <Text color="dimmed" mb="xl">
-        Denna sida visar diagnostisk information om systemet och anslutningar till Supabase.
-      </Text>
-
-      {error && (
-        <Alert leftSection={<IconAlertCircle size={16} />} color="red" mb="md">
-          {error}
-        </Alert>
-      )}
-
-      <Group justify="space-between" mb="xl">
-        <Button 
-          leftSection={<IconServer size={16} />} 
-          loading={loading} 
-          onClick={fetchDiagnostics}
-        >
-          Uppdatera diagnostik
-        </Button>
-        
-        <Group>
+      <Stack spacing="lg">
+        <Group justify="space-between">
+          <Title order={1}>Systemdiagnostik</Title>
           <Button 
-            variant="outline" 
-            leftSection={<IconCloud size={16} />} 
-            loading={directTestLoading} 
-            onClick={testDirectConnection}
+            onClick={runDiagnostics} 
+            leftSection={<IconRefresh size={16} />}
+            loading={loading}
           >
-            Testa direktanslutning
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            leftSection={<IconNetwork size={16} />} 
-            loading={proxyTestLoading} 
-            onClick={testProxyConnection}
-          >
-            Testa proxyanslutning
+            Uppdatera
           </Button>
         </Group>
-      </Group>
 
-      {diagnosticData && (
-        <Stack spacing="lg">
-          <Card withBorder shadow="sm" p="md">
-            <Title order={3} mb="md">Miljöinformation</Title>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>Körs på Vercel:</Text>
-              <Badge color={diagnosticData.environment.isVercel ? 'green' : 'gray'}>
-                {diagnosticData.environment.isVercel ? 'Ja' : 'Nej'}
-              </Badge>
+        {error && (
+          <Alert 
+            color="red" 
+            title="Diagnostikfel" 
+            icon={<IconAlertCircle size={16} />}
+          >
+            {error}
+          </Alert>
+        )}
+
+        {loading && !data && (
+          <Card withBorder p="xl">
+            <Group position="center">
+              <Loader size="lg" />
+              <Text fw={500}>Hämtar diagnostikinformation...</Text>
             </Group>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>Node-miljö:</Text>
-              <Badge color={diagnosticData.environment.nodeEnv === 'production' ? 'blue' : 'yellow'}>
-                {diagnosticData.environment.nodeEnv}
-              </Badge>
-            </Group>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>Runtime:</Text>
-              <Text>{diagnosticData.environment.runtime}</Text>
-            </Group>
-            {diagnosticData.environment.region && (
-              <Group justify="space-between">
-                <Text fw={500}>Vercel-region:</Text>
-                <Text>{diagnosticData.environment.region}</Text>
-              </Group>
-            )}
           </Card>
+        )}
 
-          <Card withBorder shadow="sm" p="md">
-            <Title order={3} mb="md">Supabase-konfiguration</Title>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>URL:</Text>
-              <Code>{diagnosticData.supabase.url}</Code>
-            </Group>
-            {diagnosticData.supabase.projectId && (
-              <Group justify="space-between">
-                <Text fw={500}>Projekt-ID:</Text>
-                <Text>{diagnosticData.supabase.projectId}</Text>
-              </Group>
-            )}
-          </Card>
-
-          {diagnosticData.connectionTests && (
-            <Card withBorder shadow="sm" p="md">
-              <Title order={3} mb="md">Anslutningstest (Server)</Title>
-              
-              <Text fw={500} mb="xs">Direktanslutning till Supabase:</Text>
-              <Group mb="md">
-                <Badge color={diagnosticData.connectionTests.direct?.status ? 'green' : 'red'}>
-                  {diagnosticData.connectionTests.direct?.status ? 'Lyckades' : 'Misslyckades'}
-                </Badge>
-                {diagnosticData.connectionTests.direct?.statusCode && (
-                  <Badge color="blue">Status: {diagnosticData.connectionTests.direct.statusCode}</Badge>
-                )}
-                {diagnosticData.connectionTests.direct?.responseTime && (
-                  <Badge color="gray">{diagnosticData.connectionTests.direct.responseTime}ms</Badge>
-                )}
-              </Group>
-              {diagnosticData.connectionTests.direct?.error && (
-                <Alert color="red" mb="md">
-                  {diagnosticData.connectionTests.direct.error}
-                </Alert>
-              )}
-              
-              <Divider my="md" />
-              
-              <Text fw={500} mb="xs">Proxyanslutning till Supabase:</Text>
-              <Group mb="md">
-                <Badge color={diagnosticData.connectionTests.proxy?.status ? 'green' : 'red'}>
-                  {diagnosticData.connectionTests.proxy?.status ? 'Lyckades' : 'Misslyckades'}
-                </Badge>
-                {diagnosticData.connectionTests.proxy?.statusCode && (
-                  <Badge color="blue">Status: {diagnosticData.connectionTests.proxy.statusCode}</Badge>
-                )}
-                {diagnosticData.connectionTests.proxy?.responseTime && (
-                  <Badge color="gray">{diagnosticData.connectionTests.proxy.responseTime}ms</Badge>
-                )}
-              </Group>
-              {diagnosticData.connectionTests.proxy?.error && (
-                <Alert color="red" mb="md">
-                  {diagnosticData.connectionTests.proxy.error}
-                </Alert>
-              )}
+        {data && (
+          <Stack spacing="lg">
+            <Card withBorder>
+              <Stack spacing="md">
+                <Group justify="space-between">
+                  <Title order={3}>Sammanfattning</Title>
+                  <Text color="dimmed" size="sm">
+                    Utförd {formatDate(data.timestamp)} ({data.processingTime.toFixed(2)}ms)
+                  </Text>
+                </Group>
+                
+                <Group>
+                  <Badge 
+                    color={data.environment.supabaseUrl ? "green" : "red"}
+                    size="lg"
+                  >
+                    Supabase URL: {data.environment.supabaseUrl ? "Konfigurerad" : "Saknas"}
+                  </Badge>
+                  
+                  <Badge 
+                    color={data.environment.hasKey ? "green" : "red"}
+                    size="lg"
+                  >
+                    Supabase API Nyckel: {data.environment.hasKey ? "Konfigurerad" : "Saknas"}
+                  </Badge>
+                  
+                  <Badge 
+                    color={data.connectionTests.directSupabase.success ? "green" : "red"}
+                    size="lg"
+                  >
+                    Direkt Supabase-anslutning: {data.connectionTests.directSupabase.success ? "OK" : "Fel"}
+                  </Badge>
+                  
+                  <Badge 
+                    color={data.connectionTests.proxySupabase.success ? "green" : "red"}
+                    size="lg"
+                  >
+                    Proxy Supabase-anslutning: {data.connectionTests.proxySupabase.success ? "OK" : "Fel"}
+                  </Badge>
+                </Group>
+              </Stack>
             </Card>
-          )}
-          
-          <Card withBorder shadow="sm" p="md">
-            <Title order={3} mb="md">Tidsstämpel</Title>
-            <Text>{new Date(diagnosticData.timestamp).toLocaleString()}</Text>
-          </Card>
-        </Stack>
-      )}
 
-      {directTestResult && (
-        <Card withBorder shadow="sm" p="md" mt="xl">
-          <Title order={3} mb="md">Resultat av direktanslutningstest</Title>
-          <Box mb="md">
-            <Group mb="xs">
-              <Text fw={500}>Status:</Text>
-              <Badge color={directTestResult.status ? 'green' : 'red'}>
-                {directTestResult.status ? 'Lyckades' : 'Misslyckades'}
-              </Badge>
-              {directTestResult.responseTime && (
-                <Badge color="gray">{directTestResult.responseTime}ms</Badge>
-              )}
-            </Group>
-            {directTestResult.error && (
-              <Alert color="red" mt="xs">
-                {directTestResult.error}
-              </Alert>
-            )}
-          </Box>
-          <Code block>{JSON.stringify(directTestResult, null, 2)}</Code>
-        </Card>
-      )}
+            <Accordion multiple defaultValue={['environment']}>
+              <Accordion.Item value="environment">
+                <Accordion.Control>
+                  <Title order={4}>Miljöinformation</Title>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  <List spacing="sm">
+                    <List.Item>
+                      <Text span fw={500}>Node miljö:</Text> {data.environment.nodeEnv}
+                    </List.Item>
+                    <List.Item>
+                      <Text span fw={500}>Vercel miljö:</Text> {data.environment.vercelEnv || 'Ej Vercel'}
+                    </List.Item>
+                    <List.Item>
+                      <Text span fw={500}>Region:</Text> {data.environment.region || 'Okänd'}
+                    </List.Item>
+                    <List.Item>
+                      <Text span fw={500}>Supabase URL:</Text> {data.environment.supabaseUrl || 'Ej konfigurerad'}
+                    </List.Item>
+                    <List.Item>
+                      <Text span fw={500}>Supabase API Nyckel:</Text> {data.environment.hasKey ? 'Konfigurerad (dold)' : 'Ej konfigurerad'}
+                    </List.Item>
+                  </List>
+                </Accordion.Panel>
+              </Accordion.Item>
 
-      {proxyTestResult && (
-        <Card withBorder shadow="sm" p="md" mt="xl">
-          <Title order={3} mb="md">Resultat av proxyanslutningstest</Title>
-          <Box mb="md">
-            <Group mb="xs">
-              <Text fw={500}>Status:</Text>
-              <Badge color={proxyTestResult.supabase?.reachable ? 'green' : 'red'}>
-                {proxyTestResult.supabase?.reachable ? 'Lyckades' : 'Misslyckades'}
-              </Badge>
-              {proxyTestResult.responseTime && (
-                <Badge color="gray">{proxyTestResult.responseTime}ms</Badge>
-              )}
-            </Group>
-            {proxyTestResult.supabase?.error && (
-              <Alert color="red" mt="xs">
-                {proxyTestResult.supabase.error}
-              </Alert>
-            )}
-          </Box>
-          <Code block>{JSON.stringify(proxyTestResult, null, 2)}</Code>
-        </Card>
-      )}
+              <Accordion.Item value="clientDiags">
+                <Accordion.Control>
+                  <Title order={4}>Klientdiagnostik</Title>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  {clientDiagnostics ? (
+                    <List spacing="sm">
+                      <List.Item>
+                        <Group>
+                          <Text fw={500}>Klient Supabase-anslutning:</Text> 
+                          {clientDiagnostics.clientSupabase ? 
+                            <Badge color="green"><IconCheck size={14} /> OK</Badge> : 
+                            <Badge color="red"><IconX size={14} /> Fel</Badge>}
+                        </Group>
+                        {clientDiagnostics.clientSupabaseError && (
+                          <Text color="red" size="sm" mt={5}>Fel: {clientDiagnostics.clientSupabaseError}</Text>
+                        )}
+                      </List.Item>
+                      <List.Item>
+                        <Text span fw={500}>Webbläsare:</Text> {clientDiagnostics.userAgent}
+                      </List.Item>
+                      <List.Item>
+                        <Text span fw={500}>Språk:</Text> {clientDiagnostics.language}
+                      </List.Item>
+                      <List.Item>
+                        <Text span fw={500}>Cookies aktiverade:</Text> {clientDiagnostics.cookiesEnabled ? 'Ja' : 'Nej'}
+                      </List.Item>
+                      <List.Item>
+                        <Text span fw={500}>LocalStorage tillgängligt:</Text> {clientDiagnostics.localStorageAvailable ? 'Ja' : 'Nej'}
+                      </List.Item>
+                      {clientDiagnostics.connectionType && (
+                        <List.Item>
+                          <Text span fw={500}>Anslutningstyp:</Text> {clientDiagnostics.connectionType}
+                        </List.Item>
+                      )}
+                    </List>
+                  ) : (
+                    <Text>Laddar klientinformation...</Text>
+                  )}
+                </Accordion.Panel>
+              </Accordion.Item>
+
+              <Accordion.Item value="connectionTests">
+                <Accordion.Control>
+                  <Title order={4}>Anslutningstest</Title>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  <Stack spacing="md">
+                    <Paper withBorder p="md">
+                      <Stack spacing="xs">
+                        <Group>
+                          <Text fw={500}>Direkt Supabase-anslutning:</Text>
+                          {data.connectionTests.directSupabase.success ? (
+                            <Badge color="green"><IconCheck size={14} /> OK ({data.connectionTests.directSupabase.responseTime}ms)</Badge>
+                          ) : (
+                            <Badge color="red"><IconX size={14} /> Fel</Badge>
+                          )}
+                        </Group>
+                        
+                        <Text size="sm">URL: {data.connectionTests.directSupabase.url}</Text>
+                        
+                        {!data.connectionTests.directSupabase.success && (
+                          <Alert 
+                            color="red" 
+                            title="Anslutningsfel" 
+                            icon={<IconAlertCircle size={16} />}
+                          >
+                            <Text>{data.connectionTests.directSupabase.errorMessage}</Text>
+                            {data.connectionTests.directSupabase.statusCode && (
+                              <Text>Status: {data.connectionTests.directSupabase.statusCode}</Text>
+                            )}
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Paper>
+
+                    <Paper withBorder p="md">
+                      <Stack spacing="xs">
+                        <Group>
+                          <Text fw={500}>Proxy Supabase-anslutning:</Text>
+                          {data.connectionTests.proxySupabase.success ? (
+                            <Badge color="green"><IconCheck size={14} /> OK ({data.connectionTests.proxySupabase.responseTime}ms)</Badge>
+                          ) : (
+                            <Badge color="red"><IconX size={14} /> Fel</Badge>
+                          )}
+                        </Group>
+                        
+                        <Text size="sm">URL: {data.connectionTests.proxySupabase.url}</Text>
+                        
+                        {!data.connectionTests.proxySupabase.success && (
+                          <Alert 
+                            color="red" 
+                            title="Anslutningsfel" 
+                            icon={<IconAlertCircle size={16} />}
+                          >
+                            <Text>{data.connectionTests.proxySupabase.errorMessage}</Text>
+                            {data.connectionTests.proxySupabase.statusCode && (
+                              <Text>Status: {data.connectionTests.proxySupabase.statusCode}</Text>
+                            )}
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Paper>
+
+                    <Paper withBorder p="md">
+                      <Stack spacing="xs">
+                        <Group>
+                          <Text fw={500}>Projektsida:</Text>
+                          {data.connectionTests.projectPage.success ? (
+                            <Badge color="green"><IconCheck size={14} /> OK ({data.connectionTests.projectPage.responseTime}ms)</Badge>
+                          ) : (
+                            <Badge color="red"><IconX size={14} /> Fel</Badge>
+                          )}
+                        </Group>
+                        
+                        <Text size="sm">URL: {data.connectionTests.projectPage.url}</Text>
+                        
+                        {!data.connectionTests.projectPage.success && (
+                          <Alert 
+                            color="red" 
+                            title="Anslutningsfel" 
+                            icon={<IconAlertCircle size={16} />}
+                          >
+                            <Text>{data.connectionTests.projectPage.errorMessage}</Text>
+                            {data.connectionTests.projectPage.statusCode && (
+                              <Text>Status: {data.connectionTests.projectPage.statusCode}</Text>
+                            )}
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Paper>
+                  </Stack>
+                </Accordion.Panel>
+              </Accordion.Item>
+
+              <Accordion.Item value="cookies">
+                <Accordion.Control>
+                  <Title order={4}>Cookies</Title>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  {Object.keys(data.cookies).length > 0 ? (
+                    <ScrollArea h={200}>
+                      <Code block>
+                        {JSON.stringify(data.cookies, null, 2)}
+                      </Code>
+                    </ScrollArea>
+                  ) : (
+                    <Text>Inga cookies hittades</Text>
+                  )}
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          </Stack>
+        )}
+      </Stack>
     </Container>
   );
 } 

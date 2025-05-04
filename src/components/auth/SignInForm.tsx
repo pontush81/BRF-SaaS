@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@/supabase-client';
+import { useAuth } from '@/contexts/AuthContext';
+import { Alert, Button } from '@/components/ui/alert';
+import { IconAlertCircle, IconBug } from '@tabler/icons-react';
 
 // Hjälpfunktion för att testa nätverksanslutning
 const checkConnectivity = async (url: string): Promise<boolean> => {
@@ -28,111 +31,85 @@ const checkConnectivity = async (url: string): Promise<boolean> => {
   }
 };
 
-// Mer robust hjälpfunktion för att testa Supabase-anslutning via proxy
-const checkSupabaseViaProxy = async (): Promise<{reachable: boolean, error?: string, details?: any}> => {
+/**
+ * Kontrollerar Supabase-anslutningen via proxy.
+ * Detta hjälper oss att diagnostisera nätverks- och DNS-relaterade problem.
+ */
+const checkSupabaseViaProxy = async (): Promise<{ 
+  status: 'ok' | 'error' | 'timeout'; 
+  reachable: boolean; 
+  details?: string; 
+  error?: string 
+}> => {
   try {
-    console.log(`Testar Supabase-anslutning via proxy...`);
-    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // Öka timeout till 8 sekunder
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // Längre timeout
     
-    // Anropa den nya proxy-routen istället
+    console.log("Checking Supabase connectivity via proxy...");
+    
+    const start = Date.now();
     const response = await fetch('/api/proxy/health?verbose=true', {
       method: 'GET',
       signal: controller.signal,
       headers: {
-        'Cache-Control': 'no-cache, no-store',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Debug': 'true'
+        'Cache-Control': 'no-cache, no-store'
       }
     });
     
     clearTimeout(timeoutId);
+    const responseTime = Date.now() - start;
     
-    // Logga råsvaret för debugging
+    // Logga rårespons för debugging
     const responseText = await response.text();
-    console.log(`Proxy health check raw response (${responseText.length} chars):`, 
-      responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText);
+    console.log(`Proxy health check raw response (${responseTime}ms):`, responseText);
     
-    // Försök parsa JSON
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      console.error(`Kunde inte parsa proxy-svar som JSON:`, e);
+      console.error("Failed to parse proxy health response:", e);
       return { 
+        status: 'error', 
         reachable: false, 
-        error: `Invalid response: ${responseText.substring(0, 100)}`, 
-        details: { parseError: e instanceof Error ? e.message : String(e) }
+        error: `Parsing error: ${e instanceof Error ? e.message : String(e)}`,
+        details: `Invalid JSON: ${responseText.substring(0, 100)}...` 
       };
     }
     
-    if (!response.ok) {
-      console.error(`Proxy health check gav felstatus: ${response.status}`, data);
+    if (data.reachable) {
       return { 
-        reachable: false, 
-        error: `Proxy error: ${response.status}`, 
-        details: data 
+        status: 'ok', 
+        reachable: true,
+        details: `Connected in ${responseTime}ms`
       };
-    }
-    
-    console.log(`Proxy health check resultat:`, data);
-    
-    // Kontrollera om Supabase är nåbar via proxy
-    if (data.supabase && data.supabase.reachable === true) {
-      console.log(`Supabase är nåbar via proxy`);
-      return { reachable: true, details: data };
     } else {
-      // Extrahera mer detaljerad felinformation
-      const errorMessage = data.supabase?.error || 'Okänt fel';
-      const statusCode = data.supabase?.status || 'okänd status';
-      
-      console.error(`Supabase är inte nåbar via proxy: ${errorMessage} (Status: ${statusCode})`, data.supabase);
-      
       return { 
+        status: 'error', 
         reachable: false, 
-        error: `${errorMessage} (Status: ${statusCode})`, 
-        details: data.supabase 
+        error: data.error || 'Unknown proxy error',
+        details: data.data ? JSON.stringify(data.data) : undefined
       };
     }
   } catch (error) {
-    console.error(`Proxy-anslutningstest misslyckades:`, error);
+    console.error("Proxy health check error:", error);
     
-    // Mer detaljerad debugging av nätverksfel
-    let errorDetails = {};
-    if (error instanceof Error) {
-      errorDetails = {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        // För fetch-relaterade fel
-        cause: error.cause ? String(error.cause) : undefined
-      };
-      
-      // Specialhantering för timeout
-      if (error.name === 'AbortError') {
-        return { 
-          reachable: false, 
-          error: 'Timeout vid anslutning till proxy (8s)', 
-          details: errorDetails
-        };
-      }
+    if (error instanceof Error && error.name === 'AbortError') {
+      return { status: 'timeout', reachable: false, error: 'Timeout checking proxy' };
     }
     
     return { 
+      status: 'error', 
       reachable: false, 
-      error: error instanceof Error ? error.message : 'Okänt fel',
-      details: errorDetails
+      error: error instanceof Error ? error.message : String(error) 
     };
   }
 };
 
-// Hjälpfunktion för att hämta detaljerad serverdiagnostik
+/**
+ * Hämtar server-diagnostik för att felsöka problem
+ */
 const getServerDiagnostics = async (): Promise<any> => {
   try {
-    console.log('Hämtar server-diagnostik...');
-    
-    // Använd den nya proxy-routen
     const response = await fetch('/api/proxy/debug', {
       method: 'GET',
       headers: {
@@ -141,110 +118,84 @@ const getServerDiagnostics = async (): Promise<any> => {
     });
     
     if (!response.ok) {
-      console.error(`Server-diagnostik misslyckades: ${response.status}`);
-      return { error: `Status ${response.status}` };
+      return { error: `Server responded with status ${response.status}` };
     }
     
-    const data = await response.json();
-    console.log('Server-diagnostik:', data);
-    return data;
+    return await response.json();
   } catch (error) {
-    console.error('Server-diagnostik fel:', error);
-    return { error: error instanceof Error ? error.message : String(error) };
+    return { 
+      error: error instanceof Error ? error.message : String(error) 
+    };
   }
 };
 
 export default function SignInForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [detailedError, setDetailedError] = useState<any>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [supabaseUrl, setSupabaseUrl] = useState<string>('');
-  const [networkStatus, setNetworkStatus] = useState<string>('checking');
-  const [proxyStatus, setProxyStatus] = useState<string>('unknown');
-  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [networkStatus, setNetworkStatus] = useState<{
+    directSupabase: boolean;
+    proxySupabase: boolean;
+    checking: boolean;
+    lastChecked: Date | null;
+    error?: string;
+    detailedError?: string;
+  }>({
+    directSupabase: true,
+    proxySupabase: true,
+    checking: false,
+    lastChecked: null
+  });
+  const [debugMode, setDebugMode] = useState(false);
   const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null);
-  
+
+  const { setUser } = useAuth();
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+
   // Hämta redirect-parametern från URL
   const searchParams = useSearchParams();
-  const router = useRouter();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
   
-  // Kontrollera nätverksanslutning
+  // Kontrollera nätverksstatus
   useEffect(() => {
-    const checkNetwork = async () => {
+    const checkNetworkStatus = async () => {
+      setNetworkStatus(prev => ({ ...prev, checking: true }));
+      
       try {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        // Kontrollera anslutning via proxy
+        const proxyStatus = await checkSupabaseViaProxy();
         
-        if (!url) {
-          setNetworkStatus('error');
-          return;
-        }
+        setNetworkStatus({
+          directSupabase: true, // Vi antar direkt anslutning är ok tills vi vet annat
+          proxySupabase: proxyStatus.reachable,
+          checking: false,
+          lastChecked: new Date(),
+          error: proxyStatus.error,
+          detailedError: proxyStatus.details
+        });
         
-        // Kontrollera först en allmän anslutning
-        const canReachGoogle = await checkConnectivity('https://www.google.com');
-        
-        if (!canReachGoogle) {
-          setNetworkStatus('no-internet');
-          return;
-        }
-
-        // I produktionsmiljö, kontrollera via proxy
-        if (process.env.NODE_ENV === 'production') {
-          const proxyCheck = await checkSupabaseViaProxy();
-          if (proxyCheck.reachable) {
-            setNetworkStatus('online');
-            setProxyStatus('working');
-          } else {
-            setNetworkStatus('proxy-error');
-            setProxyStatus('failed');
-            console.error('Proxy error:', proxyCheck.error);
-            
-            // Spara detaljerad felinformation för debugging
-            setDetailedError(proxyCheck.details);
-            
-            // Hämta ytterligare diagnostik om proxy-fel
-            try {
-              const diagnostics = await getServerDiagnostics();
-              setDiagnosticInfo(diagnostics);
-            } catch (e) {
-              console.error('Kunde inte hämta serverdiagnostik:', e);
-            }
-          }
-          return;
-        }
-        
-        // I utveckling, testa direkt Supabase-anslutning också
-        try {
-          const baseUrl = new URL(url);
-          // Försök först via proxy (även i utveckling)
-          const proxyCheck = await checkSupabaseViaProxy();
-          if (proxyCheck.reachable) {
-            setNetworkStatus('online');
-            setProxyStatus('working');
-            return;
-          }
+        if (!proxyStatus.reachable) {
+          console.warn("Supabase is not reachable via proxy:", proxyStatus.error);
           
-          // Om proxy-kontroll misslyckades, spara detaljer
-          setDetailedError(proxyCheck.details);
-          
-          // Fallback till direkt anslutning i utveckling
-          const isReachable = await checkConnectivity(`${baseUrl.origin}`);
-          setNetworkStatus(isReachable ? 'online' : 'unreachable');
-          setProxyStatus('not-used');
-        } catch (e) {
-          console.error('Ogiltigt Supabase URL-format:', url);
-          setNetworkStatus('invalid-url');
+          // Om proxy-kontrollen misslyckas, hämta server-diagnostik
+          const diagnostics = await getServerDiagnostics();
+          setDiagnosticInfo(diagnostics);
         }
-      } catch (e) {
-        console.error('Anslutningskontroll misslyckades:', e);
-        setNetworkStatus('error');
+      } catch (error) {
+        console.error("Error checking network status:", error);
+        setNetworkStatus({
+          directSupabase: false,
+          proxySupabase: false,
+          checking: false,
+          lastChecked: new Date(),
+          error: error instanceof Error ? error.message : "Unknown error checking network"
+        });
       }
     };
     
-    checkNetwork();
+    checkNetworkStatus();
   }, []);
   
   // Logga miljövariabler vid laddning
@@ -252,7 +203,6 @@ export default function SignInForm() {
     // Visa Supabase-URL (men maskera den delvis av säkerhetsskäl)
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     if (url) {
-      setSupabaseUrl(url.substring(0, 20) + '...');
       console.log('Supabase URL:', url.substring(0, 20) + '...');
       
       try {
@@ -267,7 +217,6 @@ export default function SignInForm() {
       }
     } else {
       console.error('NEXT_PUBLIC_SUPABASE_URL saknas');
-      setSupabaseUrl('SAKNAS!');
     }
     
     console.log('Environment:', process.env.NODE_ENV);
@@ -305,27 +254,21 @@ export default function SignInForm() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     try {
       // Kontrollera nätverksstatus först
-      if (networkStatus !== 'online' && networkStatus !== 'checking') {
-        // Specialhantering för Supabase-anslutningsfel
-        if (networkStatus === 'unreachable' || networkStatus === 'proxy-error') {
-          setErrorMessage('Anslutningsproblem till Supabase. Försöker med proxy-baserad inloggning...');
-          await attemptProxyBasedLogin();
-          return;
-        }
-        
-        if (networkStatus === 'no-internet') {
-          throw new Error('Ingen internetanslutning. Kontrollera din uppkoppling.');
-        } else if (networkStatus === 'invalid-url') {
-          throw new Error('Ogiltig Supabase-URL konfiguration.');
-        }
+      if (networkStatus.directSupabase === false && networkStatus.proxySupabase === false) {
+        setErrorMessage('Anslutningsproblem till Supabase. Försöker med proxy-baserad inloggning...');
+        await attemptProxyBasedLogin();
+        return;
       }
       
+      if (networkStatus.directSupabase === false) {
+        throw new Error('Ingen direkt anslutning till Supabase');
+      }
+
       // Använd den delade browser-klienten
       console.log('Skapar Supabase-klient för inloggning...');
       const supabase = createBrowserClient();
@@ -441,7 +384,7 @@ export default function SignInForm() {
       const allCookies = document.cookie.split(';').map(c => c.trim());
       console.log('Cookies efter inloggning:', allCookies);
 
-      setSuccessMessage('Inloggningen lyckades! Omdirigerar...');
+      setUser(signInResult.data.user);
       
       // Anropa session endpoint för att synkronisera server-side session
       try {
@@ -475,179 +418,87 @@ export default function SignInForm() {
         await attemptProxyBasedLogin();
       }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   
-  // Hjälpfunktion för att försöka logga in via proxyn när normal inloggning misslyckas
+  /**
+   * Försöker logga in via proxy när normal inloggning misslyckas med DNS-fel
+   */
   const attemptProxyBasedLogin = async () => {
     try {
-      setLoading(true);
-      setErrorMessage('Försöker proxy-baserad inloggning...');
-      setDetailedError(null);
+      setIsLoading(true);
+      setErrorMessage("Provar att logga in via proxy... detta kan ta lite tid.");
       
-      console.log('Utför proxy health check före inloggningsförsök...');
-      
-      // Kontrollera att proxy-hälsokontrollen fungerar
-      const proxyHealth = await checkSupabaseViaProxy();
-      console.log('Proxy health check resultat:', proxyHealth);
-      
-      if (!proxyHealth.reachable) {
-        // Spara detaljerad felinformation
-        setDetailedError(proxyHealth.details);
-        
-        // Hämta mer server-diagnostik för felsökning
-        try {
-          console.log('Hämtar server-diagnostik vid fel...');
-          const diagnostics = await getServerDiagnostics();
-          setDiagnosticInfo(diagnostics);
-          console.log('Server-diagnostik:', diagnostics);
-        } catch (diagError) {
-          console.error('Kunde inte hämta server-diagnostik:', diagError);
-        }
-        
-        // Kastande av felet har flyttats utanför try-blocket för server-diagnostik
-        throw new Error(`Kunde inte nå Supabase via proxy: ${proxyHealth.error || 'Okänt fel'}`);
+      // Först kontrollera om proxyn fungerar
+      const proxyStatus = await checkSupabaseViaProxy();
+      if (!proxyStatus.reachable) {
+        throw new Error(`Kunde inte nå Supabase via proxy: ${proxyStatus.error || 'Okänt fel'}`);
       }
       
-      // I utvecklingsläge, använd mock direkt
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Använder utvecklingsläge-mockad inloggning via proxy');
+      // I development-läge kan vi använda en mock-inloggning
+      if (process.env.NODE_ENV === 'development') {
+        console.log("MOCK LOGIN via proxy in development mode");
+        const mockUser = { 
+          id: 'mock-user-id', 
+          email: email,
+          user_metadata: { name: 'Test User' }
+        };
         
-        // Sätt mock-cookies
-        document.cookie = `sb-access-token=mock-token; path=/; max-age=${60*60*24}; SameSite=Lax`;
-        document.cookie = `sb-refresh-token=mock-refresh; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
-        document.cookie = 'supabase-dev-auth=true; path=/; max-age=86400; SameSite=Lax';
+        // Simulera inloggning
+        setUser(mockUser as any);
         
-        setSuccessMessage('Utvecklingsläge: Mock-inloggning lyckades! Omdirigerar...');
+        // Lagra sessionsinformation i localStorage för att simulera session
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          currentSession: {
+            access_token: 'mock-token',
+            user: mockUser
+          }
+        }));
         
-        // Använd direkt omladdning
-        setTimeout(() => {
-          window.location.href = redirectPath;
-        }, 1000);
-        
+        router.push('/dashboard');
         return;
       }
       
-      // För produktion, använd en fetch via proxyn direkt
-      try {
-        console.log('Utför proxy-baserad inloggning via /api/proxy/auth/v1/token');
+      // I produktion: gör en fetch-förfrågan till proxy-endpunkten
+      const response = await fetch('/api/proxy/rest/v1/auth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          grant_type: 'password'
+        }),
+        credentials: 'include'  // Viktigt för att hantera cookies
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server responded with status ${response.status}`);
+      }
+      
+      const authData = await response.json();
+      
+      // Uppdatera session manuellt
+      if (authData.user && authData.session) {
+        setUser(authData.user);
         
-        // Försök med direkta anropet först - använd den nya proxy-routen
-        const response = await fetch('/api/proxy/auth/v1/token?grant_type=password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Supabase-Proxy': 'true'
-          },
-          body: JSON.stringify({
-            email,
-            password,
-            grant_type: 'password'
-          })
-        });
+        // Synkronisera med Supabase klient via localStorage
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          currentSession: authData.session
+        }));
         
-        // Logga rå-svaret för debugging
-        const responseText = await response.text();
-        console.log(`Auth API raw response (${responseText.length} chars):`, 
-          responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText);
-        
-        // Försök parsa som JSON
-        let data;
-        try {
-          data = JSON.parse(responseText);
-        } catch (e) {
-          console.error('Kunde inte parsa auth-svar som JSON:', e);
-          throw new Error(`Ogiltigt format på svar: ${responseText.substring(0, 100)}`);
-        }
-        
-        if (!response.ok) {
-          console.error('Auth API svarade med felstatus:', response.status, data);
-          
-          // Spara detaljerad felinformation
-          setDetailedError(data);
-          
-          throw new Error(data.error_description || data.error || `Felaktig status: ${response.status}`);
-        }
-        
-        // Sätt cookies manuellt från proxy-svaret
-        if (data.access_token && data.refresh_token) {
-          document.cookie = `sb-access-token=${data.access_token}; path=/; max-age=${60*60*24}; SameSite=Lax`;
-          document.cookie = `sb-refresh-token=${data.refresh_token}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
-          
-          // Synka med server
-          try {
-            console.log('Synkroniserar session med servern...');
-            
-            const syncResponse = await fetch('/api/auth/session', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ 
-                accessToken: data.access_token, 
-                refreshToken: data.refresh_token 
-              }),
-            });
-            
-            if (!syncResponse.ok) {
-              console.error('Server session sync misslyckades:', await syncResponse.text());
-            } else {
-              console.log('Server session sync slutförd:', syncResponse.status);
-            }
-          } catch (syncError) {
-            console.error('Kunde inte synkronisera server session:', syncError);
-          }
-          
-          setSuccessMessage('Inloggningen lyckades via proxy! Omdirigerar...');
-          
-          // Använd direkt omladdning med kort fördröjning
-          setTimeout(() => {
-            window.location.href = redirectPath;
-          }, 1000);
-        } else {
-          throw new Error('Fick inget access token från proxy-inloggningen');
-        }
-      } catch (proxyError) {
-        console.error('Proxy inloggningsfel:', proxyError);
-        
-        // Om vi inte redan har satt detaljerad felinformation
-        if (!detailedError) {
-          setDetailedError({
-            error: proxyError instanceof Error ? proxyError.message : String(proxyError),
-            stack: proxyError instanceof Error ? proxyError.stack : undefined
-          });
-        }
-        
-        throw new Error(`Proxy inloggning misslyckades: ${proxyError instanceof Error ? proxyError.message : 'Okänt fel'}`);
+        router.push('/dashboard');
+      } else {
+        throw new Error('Inloggning via proxy lyckades, men ingen användare returnerades');
       }
     } catch (error) {
-      console.error('Proxy-baserad inloggning misslyckades:', error);
-      setErrorMessage(`Alla inloggningsförsök misslyckades. ${error instanceof Error ? error.message : 'Kontrollera dina uppgifter och försök igen.'}`);
+      console.error("Proxy login error:", error);
+      setErrorMessage(`Kunde inte logga in via proxy: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      setLoading(false);
-    }
-  };
-
-  // Visar olika statusmeddelanden baserat på nätverkstillstånd
-  const getNetworkMessage = () => {
-    switch (networkStatus) {
-      case 'checking':
-        return 'Kontrollerar anslutning...';
-      case 'online':
-        return 'Anslutning OK' + (proxyStatus === 'working' ? ' (via proxy)' : '');
-      case 'no-internet':
-        return 'Ingen internetanslutning';
-      case 'unreachable':
-        return 'Kan inte nå Supabase-servern';
-      case 'proxy-error':
-        return 'Fel vid anslutning via proxy';
-      case 'invalid-url':
-        return 'Ogiltig server-konfiguration';
-      case 'error':
-        return 'Fel vid kontroll av anslutning';
-      default:
-        return '';
+      setIsLoading(false);
     }
   };
 
@@ -662,145 +513,156 @@ export default function SignInForm() {
   };
 
   return (
-    <form onSubmit={handleSignIn} className="space-y-6">
-      <div className="text-xs text-center space-y-1">
-        {supabaseUrl && (
-          <div className={`${networkStatus === 'online' ? 'text-gray-400' : 'text-red-400'}`}>
-            Server: {supabaseUrl}
+    <div className="w-full mt-8">
+      <form
+        className="space-y-4"
+        ref={formRef}
+        onSubmit={handleSignIn}
+        method="post"
+      >
+        <div className="text-xs text-center space-y-1">
+          {process.env.NEXT_PUBLIC_SUPABASE_URL && (
+            <div className={`${networkStatus.directSupabase ? 'text-gray-400' : 'text-red-400'}`}>
+              Server: {process.env.NEXT_PUBLIC_SUPABASE_URL.substring(0, 20) + '...'}
+            </div>
+          )}
+          <div className={`${
+            networkStatus.directSupabase ? 'text-green-500' : 
+            networkStatus.checking ? 'text-gray-400' : 'text-red-500'
+          }`}>
+            {networkStatus.checking ? 'Kontrollerar anslutning...' : networkStatus.directSupabase ? 'Anslutning OK' : networkStatus.proxySupabase ? 'Anslutning OK (via proxy)' : 'Anslutningsproblem'}
           </div>
-        )}
-        <div className={`${
-          networkStatus === 'online' ? 'text-green-500' : 
-          networkStatus === 'checking' ? 'text-gray-400' : 'text-red-500'
-        }`}>
-          {getNetworkMessage()}
-        </div>
-        
-        {/* Visa proxy-status om tillgänglig */}
-        {proxyStatus !== 'unknown' && (
-          <div className={`text-xs ${proxyStatus === 'working' ? 'text-green-500' : 'text-amber-500'}`}>
-            Proxy: {proxyStatus === 'working' ? 'Tillgänglig' : 
-                   proxyStatus === 'not-used' ? 'Ej används' : 'Ej tillgänglig'}
-          </div>
-        )}
-        
-        {/* Debug-knapp */}
-        <button 
-          type="button" 
-          onClick={toggleDebugMode} 
-          className="text-xs text-blue-500 hover:underline focus:outline-none mt-2"
-        >
-          {debugMode ? 'Dölj diagnostik' : 'Visa diagnostik'}
-        </button>
-        
-        {/* Detaljerad diagnostik i debug-läge */}
-        {debugMode && (
-          <div className="text-left bg-gray-50 p-2 mt-2 rounded text-xs overflow-auto max-h-60">
-            <div className="font-semibold mb-1">Diagnostik:</div>
-            
-            {detailedError && (
-              <div className="mb-2">
-                <div className="font-medium text-red-500">Fel:</div>
+          
+          {/* Debug-knapp */}
+          <button 
+            type="button" 
+            onClick={toggleDebugMode} 
+            className="text-xs text-blue-500 hover:underline focus:outline-none mt-2"
+          >
+            {debugMode ? 'Dölj diagnostik' : 'Visa diagnostik'}
+          </button>
+          
+          {/* Detaljerad diagnostik i debug-läge */}
+          {debugMode && (
+            <div className="text-left bg-gray-50 p-2 mt-2 rounded text-xs overflow-auto max-h-60">
+              <div className="font-semibold mb-1">Diagnostik:</div>
+              
+              {networkStatus.detailedError && (
+                <div className="mb-2">
+                  <div className="font-medium text-red-500">Fel:</div>
+                  <pre className="whitespace-pre-wrap break-words text-xs">
+                    {networkStatus.detailedError}
+                  </pre>
+                </div>
+              )}
+              
+              {diagnosticInfo && (
+                <div>
+                  <div className="font-medium text-blue-500">Server info:</div>
+                  <pre className="whitespace-pre-wrap break-words text-xs">
+                    {JSON.stringify(diagnosticInfo, null, 2)}
+                  </pre>
+                </div>
+              )}
+              
+              <div className="mt-2">
+                <div className="font-medium">Cookies:</div>
                 <pre className="whitespace-pre-wrap break-words text-xs">
-                  {JSON.stringify(detailedError, null, 2)}
+                  {document.cookie.split(';').map(c => c.trim()).join('\n')}
                 </pre>
               </div>
-            )}
-            
-            {diagnosticInfo && (
-              <div>
-                <div className="font-medium text-blue-500">Server info:</div>
-                <pre className="whitespace-pre-wrap break-words text-xs">
-                  {JSON.stringify(diagnosticInfo, null, 2)}
-                </pre>
+            </div>
+          )}
+        </div>
+        
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            E-post
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            placeholder="din@epost.se"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            Lösenord
+          </label>
+          <input
+            id="password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            placeholder="Ditt lösenord"
+          />
+        </div>
+
+        {/* Visa nätverksstatus */}
+        {(!networkStatus.directSupabase || !networkStatus.proxySupabase) && (
+          <Alert
+            color="yellow"
+            title="Anslutningsproblem"
+            icon={<IconAlertCircle size={16} />}
+          >
+            <div className="text-sm">
+              {networkStatus.error && (
+                <p className="font-medium">{networkStatus.error}</p>
+              )}
+              <p>
+                Statusuppdatering: Supabase-servern är 
+                {networkStatus.proxySupabase 
+                  ? ' nåbar via proxy.' 
+                  : ' inte nåbar. Detta kan orsaka inloggningsproblem.'}
+              </p>
+              <div className="mt-2 flex">
+                <Button 
+                  size="xs" 
+                  variant="subtle"
+                  onClick={() => setDebugMode(!debugMode)}
+                  leftSection={<IconBug size={14} />}
+                >
+                  {debugMode ? "Dölj diagnostik" : "Visa diagnostik"}
+                </Button>
               </div>
-            )}
-            
-            <div className="mt-2">
-              <div className="font-medium">Cookies:</div>
-              <pre className="whitespace-pre-wrap break-words text-xs">
-                {document.cookie.split(';').map(c => c.trim()).join('\n')}
-              </pre>
             </div>
-          </div>
+          </Alert>
         )}
-      </div>
-      
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-          E-post
-        </label>
-        <input
-          id="email"
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          placeholder="din@epost.se"
-        />
-      </div>
+        
+        {/* Felmeddelande */}
+        {errorMessage && !networkStatus.checking && (
+          <Alert
+            color="red"
+            title="Inloggning misslyckades"
+            icon={<IconAlertCircle size={16} />}
+          >
+            {errorMessage}
+          </Alert>
+        )}
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-          Lösenord
-        </label>
-        <input
-          id="password"
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          placeholder="Ditt lösenord"
-        />
-      </div>
-
-      {errorMessage && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 my-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{errorMessage}</p>
-            </div>
-          </div>
+        <div>
+          <button
+            type="submit"
+            disabled={isLoading || !networkStatus.directSupabase}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {isLoading ? 'Loggar in...' : 'Logga in'}
+          </button>
         </div>
-      )}
 
-      {successMessage && (
-        <div className="bg-green-50 border-l-4 border-green-500 p-4 my-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700">{successMessage}</p>
-            </div>
-          </div>
+        <div className="text-sm text-center">
+          <Link href="/forgot-password" className="text-blue-600 hover:underline">
+            Glömt lösenord?
+          </Link>
         </div>
-      )}
-
-      <div>
-        <button
-          type="submit"
-          disabled={loading || networkStatus === 'no-internet'}
-          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-        >
-          {loading ? 'Loggar in...' : 'Logga in'}
-        </button>
-      </div>
-
-      <div className="text-sm text-center">
-        <Link href="/forgot-password" className="text-blue-600 hover:underline">
-          Glömt lösenord?
-        </Link>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 } 
