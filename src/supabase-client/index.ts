@@ -6,7 +6,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { User, UserResponse, Session, SessionResponse } from '@supabase/supabase-js';
+import type { User, UserResponse, Session, AuthResponse } from '@supabase/supabase-js';
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -76,7 +76,7 @@ export const createBrowserClient = () => {
               };
             },
             // Match the exact signature
-            getSession: async (): Promise<SessionResponse> => {
+            getSession: async (): Promise<AuthResponse> => {
               // Create a properly typed mock user that matches Supabase User type
               const mockUser: User = {
                 id: '12345-mock-user-id',
