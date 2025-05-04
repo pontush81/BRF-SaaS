@@ -145,14 +145,14 @@ export default function DiagnosticsPage() {
       </Text>
 
       {error && (
-        <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md">
+        <Alert leftSection={<IconAlertCircle size={16} />} color="red" mb="md">
           {error}
         </Alert>
       )}
 
-      <Group position="apart" mb="xl">
+      <Group justify="space-between" mb="xl">
         <Button 
-          leftIcon={<IconServer size={16} />} 
+          leftSection={<IconServer size={16} />} 
           loading={loading} 
           onClick={fetchDiagnostics}
         >
@@ -162,7 +162,7 @@ export default function DiagnosticsPage() {
         <Group>
           <Button 
             variant="outline" 
-            leftIcon={<IconCloud size={16} />} 
+            leftSection={<IconCloud size={16} />} 
             loading={directTestLoading} 
             onClick={testDirectConnection}
           >
@@ -171,7 +171,7 @@ export default function DiagnosticsPage() {
           
           <Button 
             variant="outline" 
-            leftIcon={<IconNetwork size={16} />} 
+            leftSection={<IconNetwork size={16} />} 
             loading={proxyTestLoading} 
             onClick={testProxyConnection}
           >
@@ -184,25 +184,25 @@ export default function DiagnosticsPage() {
         <Stack spacing="lg">
           <Card withBorder shadow="sm" p="md">
             <Title order={3} mb="md">Miljöinformation</Title>
-            <Group position="apart" mb="xs">
-              <Text weight={500}>Körs på Vercel:</Text>
+            <Group justify="space-between" mb="xs">
+              <Text fw={500}>Körs på Vercel:</Text>
               <Badge color={diagnosticData.environment.isVercel ? 'green' : 'gray'}>
                 {diagnosticData.environment.isVercel ? 'Ja' : 'Nej'}
               </Badge>
             </Group>
-            <Group position="apart" mb="xs">
-              <Text weight={500}>Node-miljö:</Text>
+            <Group justify="space-between" mb="xs">
+              <Text fw={500}>Node-miljö:</Text>
               <Badge color={diagnosticData.environment.nodeEnv === 'production' ? 'blue' : 'yellow'}>
                 {diagnosticData.environment.nodeEnv}
               </Badge>
             </Group>
-            <Group position="apart" mb="xs">
-              <Text weight={500}>Runtime:</Text>
+            <Group justify="space-between" mb="xs">
+              <Text fw={500}>Runtime:</Text>
               <Text>{diagnosticData.environment.runtime}</Text>
             </Group>
             {diagnosticData.environment.region && (
-              <Group position="apart">
-                <Text weight={500}>Vercel-region:</Text>
+              <Group justify="space-between">
+                <Text fw={500}>Vercel-region:</Text>
                 <Text>{diagnosticData.environment.region}</Text>
               </Group>
             )}
@@ -210,13 +210,13 @@ export default function DiagnosticsPage() {
 
           <Card withBorder shadow="sm" p="md">
             <Title order={3} mb="md">Supabase-konfiguration</Title>
-            <Group position="apart" mb="xs">
-              <Text weight={500}>URL:</Text>
+            <Group justify="space-between" mb="xs">
+              <Text fw={500}>URL:</Text>
               <Code>{diagnosticData.supabase.url}</Code>
             </Group>
             {diagnosticData.supabase.projectId && (
-              <Group position="apart">
-                <Text weight={500}>Projekt-ID:</Text>
+              <Group justify="space-between">
+                <Text fw={500}>Projekt-ID:</Text>
                 <Text>{diagnosticData.supabase.projectId}</Text>
               </Group>
             )}
@@ -226,7 +226,7 @@ export default function DiagnosticsPage() {
             <Card withBorder shadow="sm" p="md">
               <Title order={3} mb="md">Anslutningstest (Server)</Title>
               
-              <Text weight={500} mb="xs">Direktanslutning till Supabase:</Text>
+              <Text fw={500} mb="xs">Direktanslutning till Supabase:</Text>
               <Group mb="md">
                 <Badge color={diagnosticData.connectionTests.direct?.status ? 'green' : 'red'}>
                   {diagnosticData.connectionTests.direct?.status ? 'Lyckades' : 'Misslyckades'}
@@ -246,7 +246,7 @@ export default function DiagnosticsPage() {
               
               <Divider my="md" />
               
-              <Text weight={500} mb="xs">Proxyanslutning till Supabase:</Text>
+              <Text fw={500} mb="xs">Proxyanslutning till Supabase:</Text>
               <Group mb="md">
                 <Badge color={diagnosticData.connectionTests.proxy?.status ? 'green' : 'red'}>
                   {diagnosticData.connectionTests.proxy?.status ? 'Lyckades' : 'Misslyckades'}
@@ -278,7 +278,7 @@ export default function DiagnosticsPage() {
           <Title order={3} mb="md">Resultat av direktanslutningstest</Title>
           <Box mb="md">
             <Group mb="xs">
-              <Text weight={500}>Status:</Text>
+              <Text fw={500}>Status:</Text>
               <Badge color={directTestResult.status ? 'green' : 'red'}>
                 {directTestResult.status ? 'Lyckades' : 'Misslyckades'}
               </Badge>
@@ -301,7 +301,7 @@ export default function DiagnosticsPage() {
           <Title order={3} mb="md">Resultat av proxyanslutningstest</Title>
           <Box mb="md">
             <Group mb="xs">
-              <Text weight={500}>Status:</Text>
+              <Text fw={500}>Status:</Text>
               <Badge color={proxyTestResult.supabase?.reachable ? 'green' : 'red'}>
                 {proxyTestResult.supabase?.reachable ? 'Lyckades' : 'Misslyckades'}
               </Badge>
