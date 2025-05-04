@@ -36,7 +36,9 @@
     "dev:with-stripe": "concurrently \"npm run dev\" \"npm run stripe:webhook\"",
     "verify:onboarding": "node scripts/verify-onboarding.js",
     "compare-auth:dev": "NODE_ENV=development node src/scripts/compare-auth.js",
-    "compare-auth:staging": "NODE_ENV=staging node src/scripts/compare-auth.js"
+    "compare-auth:staging": "NODE_ENV=staging node src/scripts/compare-auth.js",
+    "ts:validate": "node src/scripts/ts-validate.js",
+    "pre-push": "npm run ts:validate"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
