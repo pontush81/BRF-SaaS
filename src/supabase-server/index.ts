@@ -7,5 +7,5 @@
 
 // Re-export specific functions from the original file
 // This avoids potential circular imports when using export *
-import { createServerClient, getServerSideUser } from '../supabase-server';
+import { createServerClient, getServerSideUser } from '../supabase-server.ts';
 export { createServerClient, getServerSideUser }; 

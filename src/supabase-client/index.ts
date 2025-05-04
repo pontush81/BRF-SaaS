@@ -7,5 +7,5 @@
 
 // Re-export specific functions from the original file
 // Using explicit imports/exports instead of export * to avoid circular reference issues
-import { createBrowserClient, getSupabaseBrowser } from '../supabase-client';
+import { createBrowserClient, getSupabaseBrowser } from '../supabase-client.ts';
 export { createBrowserClient, getSupabaseBrowser }; 
