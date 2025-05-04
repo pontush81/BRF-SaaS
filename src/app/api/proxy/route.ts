@@ -74,6 +74,7 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
   // Logga exakt info om request för debugging
   console.log('[Proxy/Health] Request URL:', request.url);
   console.log('[Proxy/Health] Pathname:', new URL(request.url).pathname);
+  console.log('[Proxy/Health] Headers:', Object.fromEntries(request.headers.entries()));
   
   if (!SUPABASE_URL) {
     console.error('[Proxy/Health] Health check failed: Missing Supabase URL');
@@ -87,19 +88,61 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Testa anslutningen genom att göra en enkel begäran
-    const healthEndpoint = `${SUPABASE_URL}/rest/v1/health?apikey=${SUPABASE_KEY}`;
+    // Försök först göra en enkel DNS-kontroll
+    let dnsResolution = {
+      success: false,
+      hostname: '',
+      error: null
+    };
+    
+    try {
+      const urlObj = new URL(SUPABASE_URL);
+      dnsResolution.hostname = urlObj.hostname;
+      
+      // En enkel fetch mot en icke-existent path för att testa DNS-upplösning
+      // Vi använder GET och no-cors för att undvika CORS-problem
+      // Vi bryr oss bara om DNS-resolution i detta steg, inte om svaret
+      const dnsCheckResponse = await fetch(`${SUPABASE_URL}/dns-check-${Date.now()}`, {
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(3000) // 3 sekunder timeout
+      });
+      
+      // Om vi kommer hit, lyckades DNS-upplösningen (även om svaret var 404)
+      dnsResolution.success = true;
+    } catch (dnsError) {
+      // Inget problem om vi får 404 eller annat fel, så länge DNS fungerade
+      if (dnsError instanceof TypeError && 
+          (dnsError.message.includes('Failed to fetch') || 
+           dnsError.message.includes('NetworkError'))) {
+        dnsResolution.success = false;
+        dnsResolution.error = dnsError.message;
+      } else {
+        // Annat fel än nätverksfel är sannolikt 404 eller timeout, vilket är ok
+        dnsResolution.success = true;
+      }
+    }
+    
+    // Testa anslutningen genom att göra en enkel begäran till REST-API:et
     console.log(`[Proxy/Health] Performing health check for: ${SUPABASE_URL}`);
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 sekunder timeout
+    
+    const healthEndpoint = `${SUPABASE_URL}/rest/v1/health?apikey=${SUPABASE_KEY}`;
     const response = await fetch(healthEndpoint, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
       },
       cache: 'no-store',
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
     const responseTime = Date.now() - startTime;
     
     try {
@@ -111,6 +154,7 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
           reachable: true,
           status: response.status,
           responseTime,
+          dns: dnsResolution,
           data: verbose ? responseData : undefined
         }, { headers: corsHeaders });
       } else {
@@ -119,6 +163,7 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
           reachable: false,
           status: response.status,
           responseTime,
+          dns: dnsResolution,
           error: `Server responded with status ${response.status}`,
           data: verbose ? responseData : undefined
         }, { status: 200, headers: corsHeaders });
@@ -139,15 +184,35 @@ async function handleHealthCheck(request: NextRequest): Promise<NextResponse> {
         reachable: false,
         status: response.status,
         responseTime,
+        dns: dnsResolution,
         error: `Failed to parse response as JSON: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`,
         responsePreview: responseText?.substring(0, 100) + '...',
       }, { status: 200, headers: corsHeaders });
     }
   } catch (error: any) {
-    console.error('[Proxy/Health] Health check exception:', error.message);
+    console.error('[Proxy/Health] Health check exception:', error);
+    
+    // Försök avgöra feltypen för mer specifik information
+    let errorType = 'unknown';
+    let errorDetails = {};
+    
+    if (error.name === 'AbortError') {
+      errorType = 'timeout';
+      errorDetails = { timeout: true, message: 'Connection timed out' };
+    } else if (error instanceof TypeError) {
+      errorType = 'network';
+      errorDetails = { 
+        network: true, 
+        message: error.message,
+        dns: error.message.includes('Could not resolve') || error.message.includes('getaddrinfo')
+      };
+    }
+    
     return NextResponse.json({
       reachable: false,
       error: `Connection error: ${error.message}`,
+      errorType,
+      details: errorDetails,
       responseTime: Date.now() - startTime
     }, { status: 200, headers: corsHeaders });
   }
@@ -230,7 +295,7 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
       // Bygg sökväg för Supabase-anropet
       supabasePath = '/' + pathSegments.join('/');
     } else {
-      // Fallback om vi inte hittar förväntad struktur
+      // Fallback om vi inte hittar föräntad struktur
       supabasePath = originalPath.replace(/^\/api\/proxy\/?/, '/');
     }
     
@@ -252,8 +317,35 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     headers.set('apikey', SUPABASE_KEY);
     headers.set('X-Client-Info', 'supabase-proxy/' + PROXY_VERSION);
     
+    // Kontrollera om detta är en auth-endpoint och lägg till Authorization header om det behövs
+    const isAuthEndpoint = supabasePath.startsWith('/auth/');
+    if (isAuthEndpoint) {
+      console.log('[Proxy/Forward] Auth endpoint detected, ensuring proper auth headers');
+      
+      // Om anroparen redan har inkluderat en Authorization-header, respektera den
+      if (!headers.has('Authorization')) {
+        // Annars använd API-nyckeln
+        headers.set('Authorization', `Bearer ${SUPABASE_KEY}`);
+      }
+    }
+    
     // Ta bort headers som kan orsaka problem
     headers.delete('host');
+    
+    // Logga headers för debuggning
+    console.log(`[Proxy/Forward] Request headers:`, Object.fromEntries(headers.entries()));
+    
+    // Logga request body för debugging om det är en auth-endpoint
+    if (isAuthEndpoint && request.method === 'POST') {
+      try {
+        const clonedRequest = request.clone();
+        const bodyText = await clonedRequest.text();
+        console.log('[Proxy/Forward] Request body (first 100 chars):', 
+          bodyText ? bodyText.substring(0, 100) : '[empty]');
+      } catch (e) {
+        console.error('[Proxy/Forward] Could not log request body:', e);
+      }
+    }
     
     // Skapa en ny begäran till Supabase
     const supabaseRequest = new Request(targetUrl, {
@@ -267,6 +359,57 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     console.log(`[Proxy/Forward] Sending ${request.method} request to Supabase`);
     const supabaseResponse = await fetch(supabaseRequest);
     console.log(`[Proxy/Forward] Response from Supabase: ${supabaseResponse.status} ${supabaseResponse.statusText}`);
+    
+    // Logga svarshuvuden för debugging
+    console.log('[Proxy/Forward] Response headers:', 
+      Object.fromEntries(supabaseResponse.headers.entries()));
+    
+    // För auth endpoints, logga också responsens innehåll för debugging
+    if (isAuthEndpoint) {
+      try {
+        const clonedResponse = supabaseResponse.clone();
+        const responseText = await clonedResponse.text();
+        console.log('[Proxy/Forward] Auth response body (first 100 chars):', 
+          responseText ? responseText.substring(0, 100) : '[empty]');
+        
+        // Om responseText är tomt trots att statuskoden är ok, skapa ett eget felsvar
+        if (!responseText && supabaseResponse.ok) {
+          console.warn('[Proxy/Forward] Empty response body from Supabase auth endpoint');
+          return NextResponse.json(
+            { error: 'Empty response from Supabase auth endpoint' },
+            { status: 500, headers: corsHeaders }
+          );
+        }
+        
+        // Försök parsa JSON för debugging
+        try {
+          const responseObj = JSON.parse(responseText);
+          console.log('[Proxy/Forward] Response parsed successfully:', 
+            Object.keys(responseObj).join(', '));
+        } catch (e) {
+          console.warn('[Proxy/Forward] Response is not valid JSON:', e);
+        }
+        
+        // Använd den här texten för svaret istället för blob nedan
+        const responseHeaders = new Headers();
+        supabaseResponse.headers.forEach((value, key) => {
+          responseHeaders.set(key, value);
+        });
+        
+        // Lägg till CORS-headrar
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          responseHeaders.set(key, value);
+        });
+        
+        return new NextResponse(responseText, {
+          status: supabaseResponse.status,
+          statusText: supabaseResponse.statusText,
+          headers: responseHeaders,
+        });
+      } catch (e) {
+        console.error('[Proxy/Forward] Error handling auth response:', e);
+      }
+    }
     
     // Transformera svaret för att kunna returnera till klienten
     const responseBody = await supabaseResponse.blob();

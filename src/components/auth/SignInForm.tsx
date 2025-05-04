@@ -461,7 +461,9 @@ export default function SignInForm() {
       }
       
       // I produktion: gör en fetch-förfrågan till proxy-endpunkten
-      const response = await fetch('/api/proxy/rest/v1/auth/token', {
+      // Använda 'auth/v1/token' istället för 'rest/v1/auth/token'
+      console.log('Attempting proxy login via auth/v1/token endpoint');
+      const response = await fetch('/api/proxy/auth/v1/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -474,12 +476,44 @@ export default function SignInForm() {
         credentials: 'include'  // Viktigt för att hantera cookies
       });
       
+      console.log('Proxy login response status:', response.status);
+      
+      // Förbättrad felhantering för att undvika JSON-parser fel
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server responded with status ${response.status}`);
+        let errorMessage = `Server responded with status ${response.status}`;
+        
+        try {
+          // Försök parse:a JSON om det finns
+          const responseText = await response.text();
+          if (responseText && responseText.trim()) {
+            try {
+              const errorData = JSON.parse(responseText);
+              errorMessage = errorData.error || errorData.message || errorMessage;
+            } catch (e) {
+              // Om vi inte kan parse:a JSON, använd texten direkt
+              errorMessage = responseText.substring(0, 100); // Begränsa längden
+            }
+          }
+        } catch (e) {
+          console.error('Error reading response:', e);
+        }
+        
+        throw new Error(errorMessage);
       }
       
-      const authData = await response.json();
+      // Säker JSON parsning
+      let authData;
+      try {
+        const responseText = await response.text();
+        authData = responseText ? JSON.parse(responseText) : null;
+        
+        if (!authData) {
+          throw new Error('Tomt svar från servern');
+        }
+      } catch (jsonError) {
+        console.error('JSON parsing error:', jsonError);
+        throw new Error(`Kunde inte tolka serverns svar: ${jsonError.message}`);
+      }
       
       // Uppdatera session manuellt
       if (authData.user && authData.session) {

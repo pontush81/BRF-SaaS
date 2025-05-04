@@ -13,15 +13,39 @@ export async function GET(request: NextRequest) {
     
     // Anropa handleHealthCheck från huvudproxyn
     // Vi använder GET-hanteraren men vi kan inte exportera den direkt
-    return mainRoute.GET(request);
+    try {
+      return mainRoute.GET(request);
+    } catch (routeError) {
+      console.error('[Health Route] Error in main route handler:', routeError);
+      
+      // Detaljerat felsvar för att hjälpa med felsökning
+      return NextResponse.json({
+        status: 'error',
+        error: 'Error in main route handler',
+        message: routeError instanceof Error ? routeError.message : 'Unknown error',
+        stack: routeError instanceof Error ? routeError.stack : undefined,
+        timestamp: new Date().toISOString()
+      }, { status: 500 });
+    }
   } catch (error) {
     console.error('[Health Route] Error forwarding to main proxy:', error);
+    
+    // Samla extra information om miljön för diagnostik
+    const environmentInfo = {
+      NODE_ENV: process.env.NODE_ENV || 'undefined',
+      VERCEL_ENV: process.env.VERCEL_ENV || 'undefined',
+      SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'defined' : 'undefined',
+      SUPABASE_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'defined' : 'undefined'
+    };
     
     // Fallback om vi inte kan importera huvudproxyn
     return NextResponse.json({
       status: 'error',
       error: 'Failed to forward to main proxy',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      environment: environmentInfo,
+      timestamp: new Date().toISOString()
     }, { status: 500 });
   }
 } 
