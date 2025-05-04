@@ -24,7 +24,19 @@
     "prisma:generate:staging": "DEPLOYMENT_ENV=staging prisma generate --schema=./prisma/schema.staging.prisma",
     "prisma:migrate:staging": "DEPLOYMENT_ENV=staging prisma migrate deploy --schema=./prisma/schema.staging.prisma",
     "prisma:db:push:staging": "DEPLOYMENT_ENV=staging prisma db push --schema=./prisma/schema.staging.prisma",
-    "prisma:studio:staging": "DEPLOYMENT_ENV=staging prisma studio --schema=./prisma/schema.staging.prisma"
+    "prisma:studio:staging": "DEPLOYMENT_ENV=staging prisma studio --schema=./prisma/schema.staging.prisma",
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force && npm run prisma:seed",
+    "schema:push:staging": "ts-node src/scripts/sync-schema.ts push staging",
+    "schema:pull:staging": "ts-node src/scripts/sync-schema.ts pull staging",
+    "schema:push:prod": "ts-node src/scripts/sync-schema.ts push production",
+    "schema:pull:prod": "ts-node src/scripts/sync-schema.ts pull production",
+    "stripe:webhook": "stripe listen --forward-to http://localhost:3000/api/stripe/webhook",
+    "stripe:webhook:staging": "stripe listen --forward-to https://staging.handbok.org/api/stripe/webhook",
+    "dev:with-stripe": "concurrently \"npm run dev\" \"npm run stripe:webhook\"",
+    "verify:onboarding": "node scripts/verify-onboarding.js",
+    "compare-auth:dev": "NODE_ENV=development node src/scripts/compare-auth.js",
+    "compare-auth:staging": "NODE_ENV=staging node src/scripts/compare-auth.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -62,6 +74,7 @@
     "eslint-config-next": "14.2.28",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "node-fetch": "^3.3.2",
     "postcss": "^8",
     "postcss-import": "^16.1.0",
     "prisma": "^6.7.0",
