@@ -14,7 +14,13 @@ The Supabase authentication implementation is organized as follows:
 
 - `src/supabase-server/index.ts` - Re-exports from `supabase-server.ts` to make the `@/supabase-server` import work with path aliases
 - `src/supabase-client/index.ts` - Re-exports from `supabase-client.ts` to make the `@/supabase-client` import work with path aliases
-- `src/lib/supabase.ts` - Legacy compatibility file that re-exports from `supabase-minimal.ts` for backward compatibility
+
+### Compatibility Layers
+
+- `src/lib/supabase.ts` - Compatibility file that provides:
+  - Re-exports from `supabase-minimal.ts`
+  - Re-exports `createServerClient` from `supabase-server.ts`
+  - Provides `createBrowserSupabaseClient` function for legacy components
 
 ### Authentication Utilities
 

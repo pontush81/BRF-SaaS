@@ -15,9 +15,26 @@ import { createClient, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KE
 // Re-export everything for compatibility
 export { createClient, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY };
 
+// Import from server file and re-export for compatibility
+import { createServerClient } from '../supabase-server';
+export { createServerClient };
+
+// For ForgotPasswordForm.tsx that's looking for this function
+export const createBrowserSupabaseClient = () => {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+};
+
 // For backward compatibility with code that might have used a default export
 export default {
   createClient,
+  createServerClient,
+  createBrowserSupabaseClient,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY

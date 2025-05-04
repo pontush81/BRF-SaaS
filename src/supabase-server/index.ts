@@ -5,4 +5,8 @@
  * with the path alias configuration.
  */
 
+// Export everything from the server file
 export * from '../supabase-server'; 
+
+// Re-export specific functions that are used in imports for more explicit documentation
+export { getServerSideUser, createServerClient } from '../supabase-server'; 
