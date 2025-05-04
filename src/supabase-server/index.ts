@@ -2,13 +2,12 @@
  * Re-export file for supabase-server functions
  * 
  * This file provides implementations that avoid circular dependencies
- * by directly wrapping functionality without import cycles.
+ * and server-only module imports by accepting cookies as parameters.
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient as createSSRClient } from '@supabase/ssr';
-import type { User, UserResponse } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import type { User, UserResponse, CookieOptions } from '@supabase/supabase-js';
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -21,13 +20,31 @@ const serverLog = (message: string, data?: any) => {
   console.log(`[Supabase-Server] ${message}`, data ? data : '');
 };
 
+// Type definition to avoid importing server-only next/headers
+export type CookieStore = {
+  get: (name: string) => { name: string; value: string } | undefined;
+  getAll: () => Array<{ name: string; value: string }>;
+};
+
 // Direct implementation to avoid circular imports completely
-export const createServerClient = () => {
+export const createServerClient = (cookieStore?: CookieStore) => {
   serverLog('Creating server client');
   
-  const cookieStore = cookies();
-  
   try {
+    if (!cookieStore) {
+      serverLog('No cookieStore provided, creating anonymous client');
+      return createClient(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
+    }
+    
     // Logga alla tillgängliga cookies
     const allCookies = cookieStore.getAll();
     serverLog('Available cookies:', allCookies.map(c => c.name));
@@ -134,16 +151,32 @@ export const createServerClient = () => {
       );
     }
     
-    // Standard fall: skapa en anonym klient
-    serverLog('Creating anonymous server client (no auth tokens found)');
-    return createClient(
+    // För SSR med cookie support
+    serverLog('Creating SSR client with cookie adapter');
+    return createSSRClient(
       SUPABASE_URL,
       SUPABASE_ANON_KEY,
       {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
+        cookies: {
+          get: (name: string) => {
+            try {
+              const cookie = cookieStore.get(name);
+              serverLog(`Getting cookie: ${name}`, { found: !!cookie });
+              return cookie?.value;
+            } catch (error) {
+              serverLog(`Error getting cookie ${name}`, error);
+              return undefined;
+            }
+          },
+          set: (name: string, value: string, options: CookieOptions) => {
+            // Note: This will only work in route handlers or server actions
+            serverLog(`set() called for cookie ${name} but it's a no-op in this context`);
+          },
+          remove: (name: string, options: CookieOptions) => {
+            // Note: This will only work in route handlers or server actions
+            serverLog(`remove() called for cookie ${name} but it's a no-op in this context`);
+          }
+        }
       }
     );
   } catch (error) {
@@ -163,15 +196,20 @@ export const createServerClient = () => {
 };
 
 // Direct implementation of getServerSideUser
-export async function getServerSideUser(): Promise<User | null> {
+export async function getServerSideUser(cookieStore: CookieStore): Promise<User | null> {
   try {
     serverLog('Getting server-side user');
-    const supabase = createServerClient();
+    
+    if (!cookieStore) {
+      serverLog('No cookieStore provided to getServerSideUser');
+      return null;
+    }
+    
+    const supabase = createServerClient(cookieStore);
     
     try {
       // I utvecklingsläge, kontrollera om vi har dev auth cookie
       if (process.env.NODE_ENV === 'development') {
-        const cookieStore = cookies();
         const devAuth = cookieStore.get('supabase-dev-auth');
         
         serverLog('Dev mode check:', { hasDevAuth: !!devAuth });

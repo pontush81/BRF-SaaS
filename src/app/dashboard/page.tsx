@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { getServerSideUser } from '@/supabase-server';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import ClientDashboard from '@/components/dashboard/ClientDashboard';
 
@@ -17,41 +17,128 @@ export const revalidate = 0;
 
 export default async function Dashboard() {
   try {
-    console.log("[DASHBOARD] Entering dashboard page");
+    console.log('Dashboard: Checking user authentication');
     
-    // Hämta användarens session och information från server
+    // Get the user from the server-side
     const cookieStore = cookies();
+    const user = await getServerSideUser(cookieStore);
     
-    // Logga cookies för debugging
-    try {
-      const allCookies = cookieStore.getAll();
-      console.log(`[DASHBOARD] Found ${allCookies.length} cookies`);
-      for (const cookie of allCookies) {
-        console.log(`[DASHBOARD] Cookie: ${cookie.name}`);
-      }
-    } catch (e) {
-      console.error("[DASHBOARD] Error logging cookies:", e);
+    // If no user is found, redirect to login
+    if (!user) {
+      console.log('Dashboard: No user found, redirecting to login');
+      return redirect('/login?error=auth-check-failed');
     }
     
-    console.log("[DASHBOARD] Before getServerSideUser");
-    const user = await getServerSideUser(cookieStore);
-    console.log("[DASHBOARD] After getServerSideUser");
+    console.log('Dashboard: User authenticated:', { id: user.id, email: user.email });
     
-    console.log("[DASHBOARD] Session check:", { 
-      hasUser: !!user,
-      userId: user?.id,
-      userEmail: user?.email
-    });
+    // Check if the user is in an organization
+    let organization = null;
+    try {
+      organization = await prisma.organization.findFirst({
+        where: {
+          members: {
+            some: {
+              userId: user.id
+            }
+          }
+        }
+      });
+      
+      console.log('Dashboard: Organization:', organization ? organization.name : 'None');
+    } catch (dbError) {
+      console.error('Error finding organization:', dbError);
+      // Continue without organization info in development
+      if (process.env.NODE_ENV !== 'development') {
+        throw dbError;
+      }
+    }
     
-    // Omdirigera till login om användaren inte är inloggad
-    if (!user || !user.email) {
-      console.log("[DASHBOARD] Ingen användare hittades, omdirigerar till login");
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">Välkommen till din dashboard</h1>
+        
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Din profil</h2>
+          <div className="space-y-2">
+            <p><strong>Användar-ID:</strong> {user.id}</p>
+            <p><strong>E-post:</strong> {user.email}</p>
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 p-2 bg-yellow-100 rounded text-sm">
+                <p className="font-semibold">Development Mode</p>
+                <p>User details are being mocked for development</p>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold mb-4">Din förening</h2>
+          {organization ? (
+            <div className="space-y-2">
+              <p><strong>Namn:</strong> {organization.name}</p>
+              <p><strong>Typ:</strong> {organization.type}</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p>Du är inte ansluten till någon förening än.</p>
+              <div className="flex gap-4">
+                <Link 
+                  href="/create-organization" 
+                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Skapa en förening
+                </Link>
+                <Link 
+                  href="/join-organization" 
+                  className="inline-block px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                >
+                  Gå med i en förening
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold mb-4">Snabbåtkomst</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Link 
+              href="/settings/billing" 
+              className="p-4 border rounded hover:bg-gray-50 flex items-center gap-3"
+            >
+              <span className="text-xl">💰</span>
+              <div>
+                <h3 className="font-medium">Fakturering</h3>
+                <p className="text-sm text-gray-600">Hantera din prenumeration</p>
+              </div>
+            </Link>
+            
+            <Link 
+              href="/editor" 
+              className="p-4 border rounded hover:bg-gray-50 flex items-center gap-3"
+            >
+              <span className="text-xl">📝</span>
+              <div>
+                <h3 className="font-medium">Handboken</h3>
+                <p className="text-sm text-gray-600">Redigera föreningens handbok</p>
+              </div>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    // In development, show the error details
+    if (process.env.NODE_ENV === 'development') {
       return (
-        <div className="container mx-auto px-4 py-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h1 className="text-2xl font-bold mb-4 text-red-600">Inte inloggad</h1>
-            <p className="mb-4">Du behöver logga in för att visa denna sida.</p>
-            <Link href="/login" className="bg-blue-600 text-white px-4 py-2 rounded">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <h1 className="text-3xl font-bold mb-6 text-red-600">Error</h1>
+          <div className="bg-red-50 p-4 rounded border border-red-200">
+            <pre className="whitespace-pre-wrap">{JSON.stringify(error, null, 2)}</pre>
+          </div>
+          <div className="mt-4">
+            <Link href="/login" className="text-blue-600 hover:underline">
               Gå till inloggning
             </Link>
           </div>
@@ -59,63 +146,7 @@ export default async function Dashboard() {
       );
     }
     
-    // Förenklad dashboard för felsökning
-    return (
-      <div className="container mx-auto px-4 py-8">
-        {/* Add client component for auth debugging */}
-        <ClientDashboard />
-        
-        <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
-          <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
-          <div className="bg-green-50 border border-green-200 p-4 rounded-md">
-            <p className="text-green-800 font-medium">Du är inloggad! 🎉</p>
-            <p className="mt-2">E-post: {user.email}</p>
-            <p>Användar-ID: {user.id}</p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h2 className="text-xl font-semibold mb-2">Snabblänkar</h2>
-            <ul className="space-y-2">
-              <li>
-                <Link href="/profile" className="text-blue-600 hover:underline">Min profil</Link>
-              </li>
-              <li>
-                <Link href="/" className="text-blue-600 hover:underline">Hem</Link>
-              </li>
-            </ul>
-          </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h2 className="text-xl font-semibold mb-2">Tips</h2>
-            <p className="text-gray-600">
-              Detta är en förenklad dashboard för felsökning. När inloggningen fungerar kommer full funktionalitet att aktiveras.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  } catch (error) {
-    console.error("[DASHBOARD] Unexpected error:", error);
-    
-    // Visa felmeddelande istället för att omdirigera
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-          <h1 className="text-2xl font-bold mb-4 text-red-600">Något gick fel</h1>
-          <p className="mb-4">Ett fel uppstod i dashboard-sidan:</p>
-          <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm">
-            {error instanceof Error ? error.message : 'Okänt fel'}
-            {error instanceof Error && error.stack ? `\n${error.stack}` : ''}
-          </pre>
-          <div className="mt-4">
-            <Link href="/login" className="bg-blue-600 text-white px-4 py-2 rounded">
-              Tillbaka till inloggning
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    // In production, redirect to login
+    return redirect('/login?error=unexpected');
   }
 } 
