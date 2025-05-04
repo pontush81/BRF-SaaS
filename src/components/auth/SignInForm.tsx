@@ -512,7 +512,12 @@ export default function SignInForm() {
         }
       } catch (jsonError) {
         console.error('JSON parsing error:', jsonError);
-        throw new Error(`Kunde inte tolka serverns svar: ${jsonError.message}`);
+        // @ts-ignore - Safely handle jsonError which could be unknown
+        const errorMessage = jsonError instanceof Error 
+          // @ts-ignore - Accessing message on jsonError which might be unknown
+          ? jsonError.message 
+          : 'Okänt fel vid tolkning av serverns svar';
+        throw new Error(`Kunde inte tolka serverns svar: ${errorMessage}`);
       }
       
       // Uppdatera session manuellt

@@ -42,8 +42,15 @@ console.log('[supabase-client] Configuration:', {
   usingProxy: shouldUseProxy ? 'yes' : 'no'
 });
 
-// For tracking the client instance
-let clientInstance: any = null;
+// Definiera en typsäker version av window.__supabaseClient
+declare global {
+  interface Window {
+    __supabaseClient?: ReturnType<typeof createClient>;
+  }
+}
+
+// Uppdatera clientInstance typen
+let clientInstance: ReturnType<typeof createClient> | null = null;
 
 // Helper för att testa om en URL är tillgänglig
 const checkUrlConnection = async (url: string): Promise<boolean> => {
@@ -363,7 +370,7 @@ export const createBrowserClient = () => {
             detectSessionInUrl: false
           }
         }
-      );
+      ) as ReturnType<typeof createClient>;
       
       // Överskugga auth-metoder med mock-implementationer
       const originalAuth = mockClient.auth;
@@ -420,11 +427,4 @@ export const createBrowserClient = () => {
 export const getSupabaseBrowser = () => {
   if (clientInstance) return clientInstance;
   return createBrowserClient();
-};
-
-// Add type declaration
-declare global {
-  interface Window {
-    __supabaseClient?: any;
-  }
-} 
+}; 

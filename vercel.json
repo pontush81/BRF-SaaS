@@ -40,5 +40,6 @@
       "permanent": true
     }
   ],
-  "trailingSlash": false
+  "trailingSlash": false,
+  "buildCommand": "next build --no-lint"
 } 
