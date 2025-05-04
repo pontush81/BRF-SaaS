@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient as createSSRClient } from '@supabase/ssr';
 import type { User, UserResponse } from '@supabase/supabase-js';
 
 // Environment variables
@@ -75,37 +76,30 @@ export const createServerClient = (cookieStore?: any) => {
     
     // Create client with cookies if available
     if (cookieStore) {
-      return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          ...authConfig,
-          cookies: {
-            get(name) {
-              try {
-                return cookieStore.get(name)?.value;
-              } catch (error) {
-                console.error("Error getting cookie:", error);
-                return undefined;
-              }
-            },
-            set(name, value, options) {
-              try {
-                cookieStore.set({ name, value, ...options });
-              } catch (error) {
-                console.warn('Cookies can only be set in route handlers or Server Actions');
-              }
-            },
-            remove(name, options) {
-              try {
-                cookieStore.set({ name, value: '', ...options, maxAge: 0 });
-              } catch (error) {
-                console.warn('Cookies can only be removed in route handlers or Server Actions');
-              }
+      // Use the SSR helper from Supabase for proper cookie handling
+      return createSSRClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        cookies: {
+          get: (name) => {
+            try {
+              return cookieStore.get(name)?.value;
+            } catch (error) {
+              console.error("Error getting cookie:", error);
+              return undefined;
             }
-          }
-        },
-        global: {
-          headers: {
-            'X-Client-Info': 'supabase-js-server/nextjs'
+          },
+          set: (name, value, options) => {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              console.warn('Cookies can only be set in route handlers or Server Actions');
+            }
+          },
+          remove: (name, options) => {
+            try {
+              cookieStore.set({ name, value: '', ...options, maxAge: 0 });
+            } catch (error) {
+              console.warn('Cookies can only be removed in route handlers or Server Actions');
+            }
           }
         }
       });
