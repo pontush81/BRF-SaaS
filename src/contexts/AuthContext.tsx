@@ -153,10 +153,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshSession = async () => {
     try {
       const supabase = getSupabaseClient();
-      const { data: { user: refreshedUser } } = await supabase.auth.getUser();
-      if (refreshedUser) {
-        setSession(refreshedUser.session);
-        setUser(refreshedUser.user);
+      // Fetch the user information
+      const { data } = await supabase.auth.getUser();
+      
+      if (data && data.user) {
+        // In Supabase v2 we need to fetch the session separately 
+        const { data: sessionData } = await supabase.auth.getSession();
+        setSession(sessionData.session);
+        setUser(data.user);
         await fetchUserData();
       }
     } catch (error) {
@@ -244,11 +248,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         
         const supabase = getSupabaseClient();
-        const { data: { user: initialUser } } = await supabase.auth.getUser();
+        const { data } = await supabase.auth.getUser();
         
-        if (initialUser) {
-          setSession(initialUser.session);
-          setUser(initialUser.user);
+        if (data && data.user) {
+          // Get session separately
+          const { data: sessionData } = await supabase.auth.getSession();
+          setSession(sessionData.session);
+          setUser(data.user);
           await fetchUserData();
         }
       } catch (error) {
