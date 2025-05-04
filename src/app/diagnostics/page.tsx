@@ -143,7 +143,7 @@ export default function DiagnosticsPage() {
 
   return (
     <Container size="lg" py="xl">
-      <Stack spacing="lg">
+      <Stack gap="lg">
         <Group justify="space-between">
           <Title order={1}>Systemdiagnostik</Title>
           <Button 
@@ -167,7 +167,7 @@ export default function DiagnosticsPage() {
 
         {loading && !data && (
           <Card withBorder p="xl">
-            <Group position="center">
+            <Group justify="center">
               <Loader size="lg" />
               <Text fw={500}>Hämtar diagnostikinformation...</Text>
             </Group>
@@ -175,9 +175,9 @@ export default function DiagnosticsPage() {
         )}
 
         {data && (
-          <Stack spacing="lg">
+          <Stack gap="lg">
             <Card withBorder>
-              <Stack spacing="md">
+              <Stack gap="md">
                 <Group justify="space-between">
                   <Title order={3}>Sammanfattning</Title>
                   <Text color="dimmed" size="sm">
@@ -290,9 +290,9 @@ export default function DiagnosticsPage() {
                   <Title order={4}>Anslutningstest</Title>
                 </Accordion.Control>
                 <Accordion.Panel>
-                  <Stack spacing="md">
+                  <Stack gap="md">
                     <Paper withBorder p="md">
-                      <Stack spacing="xs">
+                      <Stack gap="xs">
                         <Group>
                           <Text fw={500}>Direkt Supabase-anslutning:</Text>
                           {data.connectionTests.directSupabase.success ? (
@@ -320,7 +320,7 @@ export default function DiagnosticsPage() {
                     </Paper>
 
                     <Paper withBorder p="md">
-                      <Stack spacing="xs">
+                      <Stack gap="xs">
                         <Group>
                           <Text fw={500}>Proxy Supabase-anslutning:</Text>
                           {data.connectionTests.proxySupabase.success ? (
@@ -348,7 +348,7 @@ export default function DiagnosticsPage() {
                     </Paper>
 
                     <Paper withBorder p="md">
-                      <Stack spacing="xs">
+                      <Stack gap="xs">
                         <Group>
                           <Text fw={500}>Projektsida:</Text>
                           {data.connectionTests.projectPage.success ? (

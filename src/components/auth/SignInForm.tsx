@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createBrowserClient } from '@/supabase-client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Alert, Button } from '@/components/ui/alert';
+import { Alert, Button } from '@mantine/core';
 import { IconAlertCircle, IconBug } from '@tabler/icons-react';
 
 // Hjälpfunktion för att testa nätverksanslutning
