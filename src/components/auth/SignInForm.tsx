@@ -11,11 +11,27 @@ export default function SignInForm() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [supabaseUrl, setSupabaseUrl] = useState<string>('');
   
   // Hämta redirect-parametern från URL
   const searchParams = useSearchParams();
   const router = useRouter();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
+  
+  // Logga miljövariabler vid laddning
+  useEffect(() => {
+    // Visa Supabase-URL (men maskera den delvis av säkerhetsskäl)
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    if (url) {
+      setSupabaseUrl(url.substring(0, 20) + '...');
+      console.log('Supabase URL:', url.substring(0, 20) + '...');
+    } else {
+      console.error('NEXT_PUBLIC_SUPABASE_URL saknas');
+      setSupabaseUrl('SAKNAS!');
+    }
+    
+    console.log('Environment:', process.env.NODE_ENV);
+  }, []);
   
   // Check for error parameter in URL
   useEffect(() => {
@@ -53,6 +69,7 @@ export default function SignInForm() {
 
     try {
       // Använd den delade browser-klienten
+      console.log('Skapar Supabase-klient för inloggning...');
       const supabase = createBrowserClient();
       
       console.log('Försöker logga in användare med e-post:', email);
@@ -64,6 +81,17 @@ export default function SignInForm() {
       // Rensar också cookies manuellt för att säkerställa att gamla tokens tas bort
       document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
       document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      document.cookie = 'sb-provider-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      
+      // Rensa även cookies enligt äldre namnmönster
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const hostParts = supabaseUrl ? new URL(supabaseUrl).hostname.split('.') : [];
+      const projectRef = hostParts.length > 0 ? hostParts[0] : null;
+      
+      if (projectRef) {
+        console.log('Rensar äldre Supabase cookies med projektref:', projectRef);
+        document.cookie = `sb-${projectRef}-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+      }
       
       // Försök logga in
       console.log('Anropar supabase.auth.signInWithPassword');
@@ -93,11 +121,25 @@ export default function SignInForm() {
       const accessToken = session.access_token;
       const refreshToken = session.refresh_token;
       
+      console.log('Sätter cookies manuellt...');
+      
       // Sätt access token
       document.cookie = `sb-access-token=${accessToken}; path=/; max-age=${60*60*24}; SameSite=Lax`;
       
       // Sätt refresh token
       document.cookie = `sb-refresh-token=${refreshToken}; path=/; max-age=${60*60*24*30}; SameSite=Lax`;
+      
+      // Sätt även i äldre format för kompatibilitet
+      if (projectRef) {
+        const sessionStr = JSON.stringify({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          user: signInResult.data.user,
+          expires_at: session.expires_at
+        });
+        
+        document.cookie = `sb-${projectRef}-auth-token=${encodeURIComponent(sessionStr)}; path=/; max-age=${60*60*24}; SameSite=Lax`;
+      }
       
       // Om vi är i utvecklingsmiljö, sätt också server-auth-cookie
       if (process.env.NODE_ENV === 'development') {
@@ -187,6 +229,12 @@ export default function SignInForm() {
 
   return (
     <form onSubmit={handleSignIn} className="space-y-6">
+      {supabaseUrl && (
+        <div className="text-xs text-gray-400 text-center">
+          Ansluten till: {supabaseUrl}
+        </div>
+      )}
+      
       <div>
         <label htmlFor="email" className="block text-sm font-medium text-gray-700">
           E-post
