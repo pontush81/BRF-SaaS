@@ -21,7 +21,7 @@ interface ProvidersProps {
 
 export default function Providers({ children }: ProvidersProps) {
   return (
-    <MantineProvider theme={theme} normalizeCSS>
+    <MantineProvider theme={theme}>
       <AuthProvider>
         <ToastProvider>
           {children}
