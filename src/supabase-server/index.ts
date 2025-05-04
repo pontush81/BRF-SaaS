@@ -6,7 +6,5 @@
  */
 
 // Export everything from the server file
+// This single export includes all needed functions like getServerSideUser and createServerClient
 export * from '../supabase-server'; 
-
-// Re-export specific functions that are used in imports for more explicit documentation
-export { getServerSideUser, createServerClient } from '../supabase-server'; 

@@ -5,4 +5,5 @@
  * with the path alias configuration.
  */
 
+// Export everything from the client file
 export * from '../supabase-client'; 
