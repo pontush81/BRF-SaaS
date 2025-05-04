@@ -1,12 +1,27 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Re-export funktionen från huvudproxyn
-export { GET, POST, PUT, DELETE, PATCH, OPTIONS } from '../route';
+// Re-export all UTOM GET för att undvika duplicate export
+export { POST, PUT, DELETE, PATCH, OPTIONS } from '../route';
 
-// För dubbel säkerhet, lägg även till en backup-handler
+// Implementera GET-hanteraren direkt i denna fil
 export async function GET(request: NextRequest) {
-  console.log('[Health Route] Direct health endpoint called, redirecting to main proxy');
-  // Vidarebefordra till huvudproxyns GET-hanterare
-  const mainRoute = await import('../route');
-  return mainRoute.GET(request);
+  console.log('[Health Route] Direct health endpoint called');
+  
+  // Vidarebefordra till huvudproxyns health-check funktion
+  try {
+    const mainRoute = await import('../route');
+    
+    // Anropa handleHealthCheck från huvudproxyn
+    // Vi använder GET-hanteraren men vi kan inte exportera den direkt
+    return mainRoute.GET(request);
+  } catch (error) {
+    console.error('[Health Route] Error forwarding to main proxy:', error);
+    
+    // Fallback om vi inte kan importera huvudproxyn
+    return NextResponse.json({
+      status: 'error',
+      error: 'Failed to forward to main proxy',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
 } 
