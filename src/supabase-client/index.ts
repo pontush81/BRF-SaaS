@@ -131,8 +131,8 @@ function createCustomFetch(): typeof fetch {
       if (typeof url === 'string') {
         // Ändra från /api/supabase-proxy till /api/proxy
         modifiedUrl = originalUrl.replace(SUPABASE_URL, '/api/proxy');
-      } else if (url instanceof URL) {
-        // För URL objekt behöver vi manipulera sökvägen
+      } else if (url && typeof url === 'object' && 'pathname' in url && 'search' in url) {
+        // För URL-liknande objekt behöver vi manipulera sökvägen
         modifiedUrl = `/api/proxy${url.pathname}${url.search}`;
       }
       
