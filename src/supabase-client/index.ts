@@ -1,11 +1,26 @@
 /**
- * Re-export file for supabase-client.ts
+ * Re-export file for supabase-client functions
  * 
- * This file exists to make the @/supabase-client import work correctly
- * with the path alias configuration.
+ * This file exports the key functions from supabase-client.ts
+ * without creating circular dependencies.
+ * 
+ * These implementations simply re-route to the actual functions
+ * in the parent file, allowing @/supabase-client to be imported
+ * while avoiding import loops.
  */
 
-// Re-export specific functions from the original file
-// Using explicit imports/exports instead of export * to avoid circular reference issues
-import { createBrowserClient, getSupabaseBrowser } from '../supabase-client.ts';
-export { createBrowserClient, getSupabaseBrowser }; 
+// Import from supabase-js for type definitions only
+import { createClient } from '@supabase/supabase-js';
+
+// Re-export the functions directly
+export const createBrowserClient = () => {
+  // Dynamically import to avoid circular references
+  const supabaseClient = require('../supabase-client');
+  return supabaseClient.createBrowserClient();
+};
+
+export const getSupabaseBrowser = () => {
+  // Dynamically import to avoid circular references
+  const supabaseClient = require('../supabase-client');
+  return supabaseClient.getSupabaseBrowser();
+}; 
