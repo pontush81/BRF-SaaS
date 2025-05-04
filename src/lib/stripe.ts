@@ -352,7 +352,7 @@ export async function handleStripeWebhook(event: Stripe.Event) {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        const subscriptionId = invoice.subscription as string;
+        const subscriptionId = (invoice as any).subscription as string || invoice.subscription_details?.subscription as string;
         
         const subscription = await prisma.subscription.findFirst({
           where: { stripeSubscriptionId: subscriptionId },
