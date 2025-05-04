@@ -57,3 +57,4 @@ Thumbs.db
 # test database
 *.test.db
 *.test.db-journal
+*.bak
