@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🚀 Förbereder push..."
+echo "🧪 Kör tester..."
+npm run test -- --bail
+
+echo "🔍 Kör fullständig TypeScript-validering..."
+npm run ts:validate

@@ -1,0 +1,63 @@
+name: TypeScript Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Generate Prisma client
+        run: npx prisma generate
+      
+      - name: Run TypeScript check
+        run: npm run type-check
+        # Initially we'll continue even if there are errors
+        continue-on-error: true
+      
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+      
+      - name: Generate type error report
+        if: always()
+        run: |
+          npm run ts:validate
+          if [ -f "logs/typescript-errors.log" ]; then
+            echo "## TypeScript Errors Found" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the TypeScript errors before merging." >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            head -n 20 logs/typescript-errors.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            
+            if [ $(wc -l < logs/typescript-errors.log) -gt 20 ]; then
+              echo "... and more errors. See the full log in the job artifacts." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "## No TypeScript errors found! 🎉" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload error logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: typescript-error-logs
+          path: logs/
+          retention-days: 5 

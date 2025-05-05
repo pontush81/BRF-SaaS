@@ -28,8 +28,14 @@
       "./node_modules/@types",
       "./src/types"
     ],
-    "strictNullChecks": false,
-    "noImplicitAny": false
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUncheckedIndexedAccess": true
   },
   "include": [
     "next-env.d.ts",

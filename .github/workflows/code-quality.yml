@@ -1,0 +1,87 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quality:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run quality check
+        run: npm run quality-check
+
+      - name: Upload error logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: error-logs
+          path: logs/
+          retention-days: 5
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Försök läsa loggar
+            let comment = '## Kodkvalitetsrapport\n\n';
+
+            const logDir = path.join(process.env.GITHUB_WORKSPACE, 'logs');
+            if (fs.existsSync(logDir)) {
+              const logFiles = fs.readdirSync(logDir);
+
+              if (logFiles.length === 0) {
+                comment += '✅ Inga problem hittades! Koden uppfyller alla kvalitetskrav.\n';
+              } else {
+                comment += '⚠️ Vissa kodkvalitetsproblem hittades:\n\n';
+
+                for (const logFile of logFiles) {
+                  comment += `### ${logFile.replace('-errors.log', '')}\n`;
+
+                  // Läs begränsad mängd av loggfilen för att hålla kommentaren rimligt stor
+                  const logContent = fs.readFileSync(path.join(logDir, logFile), 'utf8');
+                  const logExcerpt = logContent.split('\n').slice(0, 15).join('\n');
+
+                  comment += '```\n' + logExcerpt + '\n```\n';
+
+                  if (logContent.split('\n').length > 15) {
+                    comment += '... (se fullständig loggfil i artefakter)\n';
+                  }
+                }
+
+                comment += '\nFör att åtgärda dessa problem lokalt, kör: `npm run quality-check:fix`\n';
+              }
+            } else {
+              comment += '⚠️ Kunde inte läsa loggfiler. Se GitHub Action-körningen för detaljer.\n';
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
