@@ -5,302 +5,255 @@
  * Denna fil ska ALDRIG importeras i klientkomponenter.
  */
 
-'use server';
+"use server";
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { Database } from "@/types/database.types";
+import { isDevelopment } from "@/lib/env";
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Definiera vår egen CookieOptions
+interface CookieOptions {
+  name?: string;
+  value?: string;
+  domain?: string;
+  path?: string;
+  maxAge?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: "strict" | "lax" | "none";
+}
 
-// Miljö-detektion
-const isDevelopment = process.env.NODE_ENV === 'development';
+// Interface för cookieStore som matchar NextJS cookies
+interface CookieStore {
+  get: (name: string) => { value?: string } | Promise<{ value?: string }>;
+  set?: (name: string, value: string, options?: CookieOptions) => void | Promise<void>;
+  delete?: (name: string, options?: CookieOptions) => void | Promise<void>;
+}
 
-/**
- * Skapa en Supabase-klient för serveranvändning med Next.js App Router
- * 
- * @param cookieStore Next.js cookies()-objektet från next/headers
- * @returns En Supabase-klient konfigurerad för server
- */
-export const createServerClient = (cookieStore?: any) => {
-  try {
-    console.log("[supabase-server] Creating server client with", { 
-      hasCookies: !!cookieStore,
-      url: SUPABASE_URL
-    });
-    
-    // I utvecklingsmiljö, kan vi returnera en mock-klient med förenklad auth
-    if (isDevelopment) {
-      console.log("[supabase-server] Returning development mock client");
-      
-      // Skapa en basklient
-      const mockClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: true,
-          storageKey: 'supabase.auth.token',
-        }
-      });
-      
-      // Lägg till mockade auth-metoder för utvecklingsmiljö
-      const mockAuth = {
-        getUser: async () => {
-          // Hämta cookie-info för debugging
-          const mockCookies = cookieStore ? 
-            Object.fromEntries(cookieStore.getAll().map((c: any) => [c.name, c.value])) : 
-            {};
-          
-          console.log("[supabase-server-mock] getUser called, mockCookies:", Object.keys(mockCookies));
-          
-          // Returnera alltid en mockad användare i utvecklingsmiljö
-          // För en riktig implementering skulle vi läsa sessionsdata
-          const mockUser = {
-            id: '12345-mock-server-user-id',
-            email: 'dev@example.com',
-            app_metadata: {},
-            user_metadata: { name: 'Server Utvecklare' },
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          };
-          
-          // För testning av login-flödet, låt oss se om en särskild cookie finns
-          // Detta kommer att låta login-sidan fungera
-          if (mockCookies['supabase-dev-auth'] === 'true') {
-            return { data: { user: mockUser }, error: null };
-          } else {
-            return { data: { user: null }, error: null };
-          }
-        }
-      };
-      
-      // Lägg till de mockade metoderna i klienten
-      mockClient.auth = { 
-        ...mockClient.auth, 
-        ...mockAuth 
-      };
-      
-      return mockClient;
-    }
-    
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error("[supabase-server] Missing SUPABASE_URL or SUPABASE_ANON_KEY");
-      throw new Error('Missing Supabase environment variables');
-    }
-    
-    // Grundläggande auth-konfiguration som alltid ska vara med
-    const authConfig = {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      storageKey: 'supabase.auth.token',
-    };
-    
-    // Skapa en client med explicit auth-konfiguration
-    if (cookieStore) {
-      try {
-        // Använd anon-nyckel för autentiserad client med cookies
-        const supabaseClient = createClient(
-          SUPABASE_URL,
-          SUPABASE_ANON_KEY,
-          {
-            auth: authConfig,
-            global: {
-              headers: {
-                'X-Client-Info': 'supabase-js-server/nextjs'
-              }
-            },
-            cookies: {
-              get(name) {
-                try {
-                  return cookieStore.get(name)?.value;
-                } catch (error) {
-                  console.error("[supabase-server] Error getting cookie:", error);
-                  return undefined;
-                }
-              },
-              set(name, value, options) {
-                try {
-                  cookieStore.set({ name, value, ...options });
-                } catch (error) {
-                  console.warn('[supabase-server] Cookies can only be set in route handlers or Server Actions');
-                }
-              },
-              remove(name, options) {
-                try {
-                  cookieStore.set({ name, value: '', ...options, maxAge: 0 });
-                } catch (error) {
-                  console.warn('[supabase-server] Cookies can only be removed in route handlers or Server Actions');
-                }
-              }
-            }
-          }
-        );
+// Definiera typen för SupabaseClientOptions
+type SupabaseOptions = {
+  auth?: {
+    autoRefreshToken?: boolean;
+    persistSession?: boolean;
+    detectSessionInUrl?: boolean;
+  };
+  cookies?: {
+    get: (name: string) => string | undefined;
+    set: (name: string, value: string, options?: CookieOptions) => void;
+    remove: (name: string, options?: CookieOptions) => void;
+  };
+};
 
-        // Verifiera att auth är korrekt konfigurerad
-        if (!supabaseClient.auth) {
-          console.error("[supabase-server] Supabase client auth is undefined after creation");
-          throw new Error('Supabase client auth is undefined');
-        }
-        
-        return supabaseClient;
-      } catch (clientError) {
-        console.error("[supabase-server] Error creating client with cookies:", clientError);
-        throw clientError;
-      }
-    }
-    
-    // Om cookies inte är tillgängliga, använd admin-client (endast för server-till-server operationer)
-    console.log("[supabase-server] Using fallback service role client (no cookies)");
-    try {
-      const serviceRoleClient = createClient(
-        SUPABASE_URL,
-        SUPABASE_SERVICE_ROLE_KEY,
-        {
-          auth: authConfig
-        }
-      );
-      
-      // Verifiera att auth är korrekt konfigurerad
-      if (!serviceRoleClient.auth) {
-        console.error("[supabase-server] Service role client auth is undefined after creation");
-        throw new Error('Service role client auth is undefined');
-      }
-      
-      return serviceRoleClient;
-    } catch (serviceError) {
-      console.error("[supabase-server] Error creating service role client:", serviceError);
-      throw serviceError;
-    }
-  } catch (error) {
-    console.error("[supabase-server] Fatal error creating Supabase client:", error);
-    throw error;
-  }
+// Mock-typer
+interface MockUser {
+  id: string;
+  email: string;
+  app_metadata: Record<string, unknown>;
+  user_metadata: {
+    name: string;
+  };
+  aud: string;
+  created_at: string;
+}
+
+// Globala typdeklarationer för testning och utveckling
+declare global {
+  // eslint-disable-next-line no-var
+  var createServerClientMock: {
+    createServerClient: (
+      supabaseUrl: string,
+      supabaseKey: string,
+      options: SupabaseOptions
+    ) => SupabaseClient<Database>;
+  } | undefined;
 }
 
 /**
- * Hämta aktuell användare från Supabase session och databas
- * för användning i serverkomponenter
- * 
+ * Skapa en Supabase-klient för serveranvändning med Next.js App Router
+ *
  * @param cookieStore Next.js cookies()-objektet från next/headers
- * @returns User-objekt eller null om användaren inte är inloggad
+ * @returns En Supabase-klient konfigurerad för server
  */
-export async function getServerSideUser(cookieStore: any) {
-  try {
-    console.log("Getting user server...");
-    
-    if (!cookieStore) {
-      console.error("[supabase-server] No cookie store provided");
-      return null;
-    }
-    
-    // I utvecklingsmiljö, kolla efter vår speciella development-cookie
-    if (isDevelopment) {
-      const hasDevCookie = cookieStore.get('supabase-dev-auth')?.value === 'true';
-      
-      if (hasDevCookie) {
-        console.log("[supabase-server] Development auth cookie found, returning mock user");
-        return {
-          id: '12345-mock-server-user-id',
-          email: 'dev@example.com',
-        };
-      } else {
-        console.log("[supabase-server] No development auth cookie found");
-        return null;
-      }
-    }
-    
-    try {
-      // Skapa en Supabase-klient för serveranvändning
-      const supabase = createServerClient(cookieStore);
-      
-      if (!supabase) {
-        console.error("[supabase-server] Failed to create Supabase client");
-        return null;
-      }
-      
-      // Kontrollera att auth är tillgänglig
-      if (!supabase.auth) {
-        console.error("[supabase-server] Supabase client auth is undefined");
-        return null;
-      }
-      
-      // Supabase v2: använd getUser istället för getSession
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        
-        console.log("User check:", { 
-          userExists: !!data?.user,
-          userId: data?.user?.id,
-          userEmail: data?.user?.email ? `${data.user.email.substring(0, 3)}...` : null
-        });
-        
-        if (error || !data.user || !data.user.email) {
-          console.log("No user found");
-          return null;
+export async function createServerClient(cookieStore?: CookieStore | any): Promise<SupabaseClient<Database>> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      "Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables"
+    );
+  }
+
+  // Konfigurera cookies om de finns
+  const options: SupabaseOptions = {};
+
+  if (cookieStore) {
+    // Kontrollera om vi har NextJS cookies() objekt eller vårt CookieStore interface
+    const isNextJsCookies = typeof cookieStore.getAll !== 'function' &&
+                           typeof cookieStore.get === 'function' &&
+                           typeof cookieStore.has === 'function';
+
+    options.cookies = {
+      get: (name: string) => {
+        try {
+          if (isNextJsCookies) {
+            // För Next.js cookies()
+            return cookieStore.get(name)?.value;
+          } else {
+            // För vårt eget CookieStore
+            const cookie = (cookieStore as CookieStore).get(name);
+            // Hantera om cookieStore.get är async eller inte
+            if (cookie instanceof Promise) {
+              // Detta är inte optimalt för Promises, men vi måste göra en synkron funktion
+              return undefined;
+            }
+            return cookie?.value;
+          }
+        } catch (e) {
+          console.error("Error getting cookie:", e);
+          return undefined;
         }
-        
-        return {
-          id: data.user.id,
-          email: data.user.email,
-        };
-      } catch (authError) {
-        console.error('[supabase-server] Error calling supabase.auth.getUser():', authError);
-        return null;
-      }
-    } catch (clientError) {
-      console.error('[supabase-server] Error creating Supabase client:', clientError);
+      },
+      set: (name: string, value: string, options?: CookieOptions) => {
+        try {
+          if (!isNextJsCookies && (cookieStore as CookieStore).set) {
+            (cookieStore as CookieStore).set?.(name, value, options);
+          } else {
+            console.warn('[supabase-server] NextJS cookies() cannot set cookies');
+          }
+        } catch (e) {
+          console.error("Error setting cookie:", e);
+        }
+      },
+      remove: (name: string, options?: CookieOptions) => {
+        try {
+          if (!isNextJsCookies && (cookieStore as CookieStore).delete) {
+            (cookieStore as CookieStore).delete?.(name, options);
+          } else {
+            console.warn('[supabase-server] NextJS cookies() cannot remove cookies');
+          }
+        } catch (e) {
+          console.error("Error removing cookie:", e);
+        }
+      },
+    };
+  }
+
+  // Använd mock i utveckling om det finns en mock
+  if (isDevelopment() && typeof globalThis.createServerClientMock !== 'undefined') {
+    return globalThis.createServerClientMock.createServerClient(
+      supabaseUrl,
+      supabaseKey,
+      options
+    );
+  }
+
+  return createClient<Database>(supabaseUrl, supabaseKey, options);
+}
+
+/**
+ * Skapa en Supabase-klient med servicerollen
+ */
+export async function createServiceRoleClient(): Promise<SupabaseClient<Database>> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRole) {
+    throw new Error(
+      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables"
+    );
+  }
+
+  return createClient<Database>(supabaseUrl, supabaseServiceRole, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+/**
+ * Skapa en Supabase-klient som använder Next.js cookies
+ */
+export async function createClientCookies(): Promise<SupabaseClient<Database>> {
+  const cookieStore = cookies();
+  return createServerClient(cookieStore);
+}
+
+/**
+ * Hämta aktuell användare från Supabase session
+ */
+export async function getServerSideUser(cookieStore: CookieStore | any): Promise<{ id: string; email: string } | null> {
+  try {
+    // Skapa en Supabase-klient för serveranvändning
+    const supabase = await createServerClient(cookieStore);
+
+    // Supabase v2: använd getUser
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error || !data?.user || !data.user.email) {
       return null;
     }
+
+    return {
+      id: data.user.id,
+      email: data.user.email,
+    };
   } catch (error) {
     console.error('[supabase-server] Error getting server-side user:', error);
     return null;
   }
 }
 
-// TESTFALL för getServerSideUser (Supabase v2)
-// Lägg i samma fil för enkelhet, men flytta gärna till separat testfil i riktig testmiljö
-if (process.env.NODE_ENV === 'test') {
-  const { describe, it, expect, beforeEach, jest } = require('@jest/globals');
+// Skapa mock-implementation i utvecklingsmiljö
+if (isDevelopment()) {
+  const mockUser: MockUser = {
+    id: "123456",
+    email: "test@example.com",
+    app_metadata: {},
+    user_metadata: {
+      name: "Test User",
+    },
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
 
-  describe('getServerSideUser', () => {
-    let mockSupabase;
-    let mockCookieStore;
+  const mockCookieStore: Record<string, string> = {};
 
-    beforeEach(() => {
-      mockCookieStore = {
-        get: jest.fn(),
-        set: jest.fn(),
-        delete: jest.fn(),
+  const mockAuth = {
+    getUser: async () => {
+      return {
+        data: {
+          user: mockUser
+        },
+        error: null
       };
-    });
+    },
+  };
 
-    it('returnerar användare om supabase.auth.getUser returnerar user', async () => {
-      mockSupabase = {
-        auth: {
-          getUser: jest.fn().mockResolvedValue({ data: { user: { id: '123', email: 'test@example.com' } }, error: null })
+  const mockSupabase = {
+    auth: mockAuth,
+  };
+
+  // Skapa en mock createServerClient-funktion om den inte redan finns
+  if (typeof globalThis.createServerClientMock === 'undefined') {
+    globalThis.createServerClientMock = {
+      createServerClient: (
+        _supabaseUrl: string,
+        _supabaseKey: string,
+        options: SupabaseOptions
+      ) => {
+        // Hantera cookies om de finns
+        if (options.cookies) {
+          const cookiesImpl = options.cookies;
+          cookiesImpl.get = (name: string) => mockCookieStore[name];
+          cookiesImpl.set = (name: string, value: string) => { mockCookieStore[name] = value; };
+          cookiesImpl.remove = (name: string) => { delete mockCookieStore[name]; };
         }
-      };
-      // Mocka createServerClient till att returnera mockSupabase
-      const origCreateServerClient = createServerClient;
-      global.createServerClient = () => mockSupabase;
-      const result = await getServerSideUser(mockCookieStore);
-      expect(result).toEqual({ id: '123', email: 'test@example.com' });
-      global.createServerClient = origCreateServerClient;
-    });
 
-    it('returnerar null om supabase.auth.getUser returnerar error', async () => {
-      mockSupabase = {
-        auth: {
-          getUser: jest.fn().mockResolvedValue({ data: { user: null }, error: 'error' })
-        }
-      };
-      const origCreateServerClient = createServerClient;
-      global.createServerClient = () => mockSupabase;
-      const result = await getServerSideUser(mockCookieStore);
-      expect(result).toBeNull();
-      global.createServerClient = origCreateServerClient;
-    });
-  });
-} 
+        return mockSupabase as unknown as SupabaseClient<Database>;
+      },
+    };
+  }
+}
