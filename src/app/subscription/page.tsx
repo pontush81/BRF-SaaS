@@ -1,8 +1,9 @@
-'use client';
-
 import { Suspense } from 'react';
 import { Metadata } from 'next';
-import PricingPlans from './pricing-plans';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the client component with no SSR
+const PricingPlans = dynamic(() => import('./pricing-plans'), { ssr: false });
 
 export const metadata: Metadata = {
   title: 'Prenumerera på BRF-SaaS',

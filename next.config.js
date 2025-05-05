@@ -47,9 +47,7 @@ const nextConfig = {
 
   // Configure dynamic routes and static exports
   experimental: {
-    // This will make the server not pre-render pages with dynamic data
-    // like cookies, headers, etc., which is what we need
-    serverActions: true,
+    // Add any experimental features here if needed
   },
 
   // Ta bort alla specialfunktioner för rewriting
