@@ -194,20 +194,29 @@ export async function createClientCookies(): Promise<SupabaseClient<Database>> {
 export async function getServerSideUser(cookieStore: CookieStore | any): Promise<{ id: string; email: string } | null> {
   try {
     // Logga miljöinformation
+    const isStaging = process.env.NODE_ENV === 'production' && process.env.DEPLOYMENT_ENV === 'staging';
     console.log('Server auth check environment:', {
       NODE_ENV: process.env.NODE_ENV,
       DEPLOYMENT_ENV: process.env.DEPLOYMENT_ENV || 'not set',
+      isStaging
     });
 
     // Logga tillgängliga cookies
+    let hasStagingAuth = false;
     if (typeof cookieStore.getAll === 'function') {
       const allCookies = cookieStore.getAll();
       console.log('Available cookies:', allCookies.map((c: any) => c.name));
+
+      // Kontrollera om vi har staging-auth cookie
+      hasStagingAuth = allCookies.some((c: any) => c.name === 'staging-auth');
+    } else {
+      // Om getAll inte finns, försök med get
+      hasStagingAuth = !!cookieStore.get('staging-auth');
     }
 
     // Utvecklingsmiljö kan använda mock
     if (isDevelopment()) {
-      console.log('Server auth check: Using development auth');
+      console.log('Server auth check: Using development auth mock');
       const mockUser = {
         id: "123456",
         email: "test@example.com",
@@ -215,6 +224,44 @@ export async function getServerSideUser(cookieStore: CookieStore | any): Promise
       return mockUser;
     }
 
+    // Staging-miljö med staging-auth cookie kan också använda mock
+    if (isStaging && hasStagingAuth) {
+      console.log('Server auth check: Using staging auth mock');
+      const mockUser = {
+        id: "staging-user-id",
+        email: "staging@example.com",
+      };
+
+      // Försök också med Supabase-auth, men returnera mockad användare om det misslyckas
+      try {
+        // Skapa en Supabase-klient för serveranvändning
+        const supabase = await createServerClient(cookieStore);
+
+        // Supabase v2: använd getUser
+        const { data, error } = await supabase.auth.getUser();
+
+        if (!error && data?.user && data.user.email) {
+          console.log('Server auth check success in staging:', {
+            userId: data.user.id.substring(0, 8) + '...',
+            userEmail: data.user.email,
+          });
+
+          return {
+            id: data.user.id,
+            email: data.user.email,
+          };
+        }
+
+        // Om det misslyckades, logga felet och fortsätt med mockad användare
+        console.log('Supabase auth failed in staging, using mock instead:', error?.message || 'No user data');
+        return mockUser;
+      } catch (supabaseError) {
+        console.error('Error using Supabase in staging, using mock instead:', supabaseError);
+        return mockUser;
+      }
+    }
+
+    // Standard-flöde för andra miljöer
     // Skapa en Supabase-klient för serveranvändning
     const supabase = await createServerClient(cookieStore);
 

@@ -47,71 +47,24 @@ export default async function Dashboard() {
         hasStagingAuth,
         hasAuthStatus
       });
-
-      // För staging miljö, om vi har staging-auth cookie men ingen annan autentisering,
-      // tillåt åtkomst till dashboard för testning
-      if (isStaging && hasStagingAuth) {
-        console.log('Dashboard: Using staging auth cookie for authentication');
-
-        // Om vi inte har några tokens men har staging-auth, använd en mock-användare
-        // Notera att vi redan är på dashboard, så vi behöver inte redirecta igen
-        if (!hasAccessToken || !hasRefreshToken) {
-          const mockUser = {
-            id: 'staging-user-id',
-            email: 'staging@example.com',
-          };
-
-          // Fortsätt med dashboard-rendering med mock-användare
-          return (
-            <div className="max-w-4xl mx-auto px-4 py-8">
-              <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
-                <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö</h2>
-                <p className="text-sm text-yellow-700">
-                  Du använder staging-miljön med en mock-användare.
-                  Detta är endast för testning av gränssnittet.
-                </p>
-              </div>
-
-              <h1 className="text-3xl font-bold mb-6">
-                Välkommen till din dashboard (Staging)
-              </h1>
-
-              <div className="bg-white rounded-lg shadow p-6 mb-6">
-                <h2 className="text-xl font-semibold mb-4">Din profil (Staging Mock)</h2>
-                <div className="space-y-2">
-                  <p>
-                    <strong>Användar-ID:</strong> {mockUser.id}
-                  </p>
-                  <p>
-                    <strong>E-post:</strong> {mockUser.email}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold mb-4">Staging-test</h2>
-                <p>
-                  Denna sida visas eftersom du har en staging-auth cookie,
-                  men ingen giltig Supabase-session.
-                </p>
-                <div className="mt-4">
-                  <a href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
-                    Gå tillbaka till inloggning
-                  </a>
-                </div>
-              </div>
-            </div>
-          );
-        }
-      }
     } catch (error) {
       console.error('Dashboard: Error checking cookies:', error);
     }
 
     // Försök hämta användaren från servern
+    // Nu kommer detta att lyckas även i staging tack vare den förbättrade getServerSideUser-funktionen
     let user = null;
     try {
       user = await getServerSideUser(cookieStore);
+
+      if (user) {
+        console.log('Dashboard: User fetched successfully:', {
+          id: user.id,
+          email: user.email,
+        });
+      } else {
+        console.log('Dashboard: No user returned from getServerSideUser');
+      }
     } catch (authError) {
       console.error('Dashboard: Error getting server-side user:', authError);
 
@@ -120,56 +73,7 @@ export default async function Dashboard() {
 
       // I staging-miljön med staging-auth, visa mockad dashboard istället för att redirecta
       if (isStaging && hasStagingAuth) {
-        console.log('Dashboard: Staging auth cookie found, showing mock dashboard');
-        const mockUser = {
-          id: 'staging-user-id',
-          email: 'staging@example.com',
-        };
-
-        return (
-          <div className="max-w-4xl mx-auto px-4 py-8">
-            <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
-              <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö</h2>
-              <p className="text-sm text-yellow-700">
-                Du använder staging-miljön med en mock-användare.
-                Detta är endast för testning av gränssnittet.
-              </p>
-            </div>
-
-            <h1 className="text-3xl font-bold mb-6">
-              Välkommen till din dashboard (Staging Mock)
-            </h1>
-
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Din profil (Staging Mock)</h2>
-              <div className="space-y-2">
-                <p>
-                  <strong>Användar-ID:</strong> {mockUser.id}
-                </p>
-                <p>
-                  <strong>E-post:</strong> {mockUser.email}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Staging-test</h2>
-              <p>
-                Denna sida visas trots autentiseringsfel eftersom du har en staging-auth cookie.
-                Detta används för att testa gränssnittet i staging-miljön.
-              </p>
-              <div className="mt-4">
-                <a href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
-                  Gå tillbaka till inloggning
-                </a>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      // Om vi är i staging och det är ett autentiseringsfel, visa ett mer användbart felmeddelande
-      if (isStaging) {
+        console.log('Dashboard: Showing error page with debugging info in staging');
         return (
           <div className="max-w-4xl mx-auto px-4 py-8">
             <div className="bg-red-100 p-4 rounded-lg border border-red-300 mb-6">
@@ -196,60 +100,9 @@ export default async function Dashboard() {
     }
 
     // If no user is found, redirect to login
-    // VIKTIGT: I staging-miljö med staging-auth har vi redan hanterat detta ovan
     if (!user) {
-      // Kolla igen om vi har staging-auth för att undvika oändlig redirect-loop
-      const hasStagingAuth = !!cookieStore.get('staging-auth');
-
-      if (isStaging && hasStagingAuth) {
-        console.log('Dashboard: No user but staging auth cookie found, showing mock dashboard');
-        const mockUser = {
-          id: 'staging-user-id',
-          email: 'staging@example.com',
-        };
-
-        return (
-          <div className="max-w-4xl mx-auto px-4 py-8">
-            <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
-              <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö (Mock)</h2>
-              <p className="text-sm text-yellow-700">
-                Du använder staging-miljön med en mock-användare.
-                Detta är endast för testning av gränssnittet.
-              </p>
-            </div>
-
-            <h1 className="text-3xl font-bold mb-6">
-              Välkommen till din dashboard (Staging Mock)
-            </h1>
-
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Din profil (Mock)</h2>
-              <div className="space-y-2">
-                <p>
-                  <strong>Användar-ID:</strong> {mockUser.id}
-                </p>
-                <p>
-                  <strong>E-post:</strong> {mockUser.email}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Staging-test</h2>
-              <p>
-                Denna sida visas eftersom du har en staging-auth cookie,
-                men ingen giltig Supabase-session.
-              </p>
-              <div className="mt-4">
-                <a href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
-                  Gå tillbaka till inloggning
-                </a>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
+      // I staging-miljö bör vi inte komma hit längre eftersom getServerSideUser nu
+      // returnerar en mockad användare när staging-auth cookie finns
       console.log('Dashboard: No user found, redirecting to login');
       return redirect('/login?error=auth-check-failed');
     }
@@ -290,7 +143,9 @@ export default async function Dashboard() {
           <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
             <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö</h2>
             <p className="text-sm text-yellow-700">
-              Du använder den begränsade staging-miljön.
+              {user.id === 'staging-user-id'
+                ? 'Du använder en mockad användare i staging-miljön.'
+                : 'Du använder den begränsade staging-miljön med en riktig användare.'}
             </p>
           </div>
         )}
@@ -308,10 +163,12 @@ export default async function Dashboard() {
             <p>
               <strong>E-post:</strong> {user.email}
             </p>
-            {process.env.NODE_ENV === 'development' && (
+            {(process.env.NODE_ENV === 'development' || (isStaging && user.id === 'staging-user-id')) && (
               <div className="mt-4 p-2 bg-yellow-100 rounded text-sm">
-                <p className="font-semibold">Development Mode</p>
-                <p>User details are being mocked for development</p>
+                <p className="font-semibold">
+                  {process.env.NODE_ENV === 'development' ? 'Development Mode' : 'Staging Mode'}
+                </p>
+                <p>User details are being mocked for {process.env.NODE_ENV === 'development' ? 'development' : 'staging'}</p>
               </div>
             )}
           </div>
