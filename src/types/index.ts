@@ -1,14 +1,25 @@
 /**
  * Type Definitions Index
- * 
+ *
  * Central export point for all type definitions to simplify imports
  * Usage: import { Handbook, Section, Page } from '@/types';
  */
 
-// Re-export all types from individual type files
+// Re-export all non-conflicting types
 export * from './handbook';
-export * from './organization';
-export * from './prisma';
+// Re-export types from organization.ts and prisma.ts with different names
+export type { Organization as OrganizationType } from './organization';
+export type {
+  Organization as PrismaOrganization,
+  UserWithOrganizations,
+  UserOrganizationWithOrg,
+} from './prisma';
+// Export non-type members
+export {
+  getDefaultOrganization,
+  getUserRoleInOrganization,
+  hasRole,
+} from './prisma';
 export * from './supabase';
 
 // Add any global type definitions here
@@ -42,4 +53,4 @@ export interface PaginatedResponse<T> {
   totalPages: number;
   currentPage: number;
   hasMore: boolean;
-} 
+}

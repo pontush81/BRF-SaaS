@@ -15,8 +15,11 @@
  *   npm run quality-check -- --path=src/components/auth - Kör på specifik katalog
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { execSync } = require('child_process');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require('path');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require('fs');
 
 // Tolka kommandoradsargument
@@ -31,23 +34,37 @@ if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
 
+// eslint-disable-next-line no-console
 console.log('🚀 Startar kodkvalitetskontroll...');
 
 // Kör kontroller och samla resultat
 const results = {
   typeCheck: { success: false, message: '', command: 'npm run type-check' },
   typeValidate: { success: false, message: '', command: 'npm run ts:validate' },
-  lint: { success: false, message: '', command: 'npm run lint' + (shouldFix ? ' --fix' : '') },
-  format: { success: false, message: '', command: 'npm run format' + (shouldFix ? '' : ':check') },
+  lint: {
+    success: false,
+    message: '',
+    command: 'npm run lint' + (shouldFix ? ' --fix' : ''),
+  },
+  format: {
+    success: false,
+    message: '',
+    command: 'npm run format' + (shouldFix ? '' : ':check'),
+  },
 };
 
 // Funktion för att köra en kommandokontroll
 function runCheck(name, command) {
+  // eslint-disable-next-line no-console
   console.log(`\n🔍 Kör ${name}...`);
   try {
-    const output = execSync(command, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const output = execSync(command, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     results[name].success = true;
     results[name].message = `✅ ${name} genomförd utan problem`;
+    // eslint-disable-next-line no-console
     console.log(results[name].message);
     return output;
   } catch (error) {
@@ -58,7 +75,9 @@ function runCheck(name, command) {
     const logFile = path.join(logDir, `${name}-errors.log`);
     fs.writeFileSync(logFile, error.stdout || error.message);
 
+    // eslint-disable-next-line no-console
     console.error(results[name].message);
+    // eslint-disable-next-line no-console
     console.error(`   Se ${logFile} för detaljer`);
     return error.stdout;
   }
@@ -66,6 +85,7 @@ function runCheck(name, command) {
 
 // Kör komponentanalys på stor komponent
 function analyzeComponents() {
+  // eslint-disable-next-line no-console
   console.log('\n🔍 Letar efter stora komponenter...');
 
   try {
@@ -85,33 +105,43 @@ function analyzeComponents() {
       .filter(file => file.trim());
 
     if (bigComponents.length > 0) {
+      // eslint-disable-next-line no-console
       console.log('\n⚠️ Stora komponenter hittades:');
       bigComponents.forEach(file => {
+        // eslint-disable-next-line no-console
         console.log(`   - ${file}`);
         try {
-          const output = execSync(`node src/scripts/analyze-component.js "${file}"`, { encoding: 'utf8' });
-          const logFile = path.join(logDir, `${path.basename(file, '.tsx')}-analysis.log`);
+          const output = execSync(
+            `node src/scripts/analyze-component.js "${file}"`,
+            { encoding: 'utf8' }
+          );
+          const logFile = path.join(
+            logDir,
+            `${path.basename(file, '.tsx')}-analysis.log`
+          );
           fs.writeFileSync(logFile, output);
+          // eslint-disable-next-line no-console
           console.log(`     Analys sparad till ${logFile}`);
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.error(`     Kunde inte analysera: ${error.message}`);
         }
       });
 
       return {
         success: false,
-        message: '⚠️ Stora komponenter hittades och bör refaktoreras'
+        message: '⚠️ Stora komponenter hittades och bör refaktoreras',
       };
     } else {
       return {
         success: true,
-        message: '✅ Inga överdrivet stora komponenter hittades'
+        message: '✅ Inga överdrivet stora komponenter hittades',
       };
     }
   } catch (error) {
     return {
       success: false,
-      message: `❌ Problem vid analys av komponenter: ${error.message}`
+      message: `❌ Problem vid analys av komponenter: ${error.message}`,
     };
   }
 }
@@ -120,38 +150,52 @@ function analyzeComponents() {
 runCheck('typeCheck', results.typeCheck.command);
 runCheck('lint', results.lint.command);
 runCheck('format', results.format.command);
-const tsValidateOutput = runCheck('typeValidate', results.typeValidate.command);
 const componentAnalysis = analyzeComponents();
+runCheck('typeValidate', results.typeValidate.command);
 
 // Sammanställ resultatet
+// eslint-disable-next-line no-console
 console.log('\n📊 Sammanfattning:');
 Object.values(results).forEach(result => {
+  // eslint-disable-next-line no-console
   console.log(result.message);
 });
+// eslint-disable-next-line no-console
 console.log(componentAnalysis.message);
 
 // Slutgiltigt resultat
-const allSucceeded = Object.values(results).every(r => r.success) && componentAnalysis.success;
+const allSucceeded =
+  Object.values(results).every(r => r.success) && componentAnalysis.success;
 
-console.log('\n' + (allSucceeded
-  ? '✅ Alla kontroller godkända! Koden är redo att skickas in.'
-  : '⚠️ Vissa kontroller misslyckades. Se loggar för detaljer.'));
+// eslint-disable-next-line no-console
+console.log(
+  '\n' +
+    (allSucceeded
+      ? '✅ Alla kontroller godkända! Koden är redo att skickas in.'
+      : '⚠️ Vissa kontroller misslyckades. Se loggar för detaljer.')
+);
 
 if (!allSucceeded) {
+  // eslint-disable-next-line no-console
   console.log('\nFörslag på åtgärder:');
   if (!results.typeCheck.success) {
+    // eslint-disable-next-line no-console
     console.log('- Åtgärda typfel: kontrollera logs/typeCheck-errors.log');
   }
   if (!results.typeValidate.success) {
+    // eslint-disable-next-line no-console
     console.log('- Kör med fix: npm run ts:validate --fix');
   }
   if (!results.lint.success) {
+    // eslint-disable-next-line no-console
     console.log('- Åtgärda linting-problem: npm run lint --fix');
   }
   if (!results.format.success) {
+    // eslint-disable-next-line no-console
     console.log('- Formatera koden: npm run format');
   }
   if (!componentAnalysis.success) {
+    // eslint-disable-next-line no-console
     console.log('- Refaktorera stora komponenter: npm run refactor [sökväg]');
   }
 }

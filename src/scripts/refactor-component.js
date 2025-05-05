@@ -1,167 +1,239 @@
 #!/usr/bin/env node
 
 /**
- * Component Refactoring Script
- * 
- * Helps automate the process of breaking down large components.
- * 
+ * Component Refactoring Helper
+ *
+ * This script helps in refactoring React components by:
+ * - Creating the proper directory structure
+ * - Splitting a component into multiple files
+ * - Extracting types, hooks, and utilities
+ *
  * Usage:
  *   node src/scripts/refactor-component.js src/components/LargeComponent.tsx
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require('path');
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars
 const { execSync } = require('child_process');
 
-// Get the target file from command line arguments
+// Get command line args
 const targetFile = process.argv[2];
 
 if (!targetFile) {
+  // eslint-disable-next-line no-console
   console.error('Please provide a component file path.');
-  console.error('Usage: node src/scripts/refactor-component.js src/components/LargeComponent.tsx');
+  // eslint-disable-next-line no-console
+  console.error(
+    'Usage: node src/scripts/refactor-component.js src/components/LargeComponent.tsx'
+  );
   process.exit(1);
 }
 
 if (!fs.existsSync(targetFile)) {
+  // eslint-disable-next-line no-console
   console.error(`File not found: ${targetFile}`);
   process.exit(1);
 }
 
-// Extract file information
-const fileContent = fs.readFileSync(targetFile, 'utf8');
-const fileName = path.basename(targetFile, path.extname(targetFile));
+// Get component name and directory
+const fileExtension = path.extname(targetFile);
+const baseName = path.basename(targetFile, fileExtension);
 const dirName = path.dirname(targetFile);
-const newDirPath = path.join(dirName, fileName);
+const newDirPath = path.join(dirName, baseName);
 
-// Create directory structure
-console.log(`Creating directory structure for ${fileName}...`);
-if (!fs.existsSync(newDirPath)) {
-  fs.mkdirSync(newDirPath, { recursive: true });
-  fs.mkdirSync(path.join(newDirPath, 'components'), { recursive: true });
-}
+// Read the component file
+const componentContent = fs.readFileSync(targetFile, 'utf8');
+const lines = componentContent.split('\n');
 
-// Extract component props interface
-const propsRegex = /interface\s+(\w+Props)\s*{([\s\S]*?)}/;
-const propsMatch = fileContent.match(propsRegex);
-let propsContent = '';
+// Analyze imports
+const importLines = lines.filter(line => line.startsWith('import '));
+const imports = importLines.join('\n');
 
-if (propsMatch) {
-  propsContent = `export interface ${propsMatch[1]} {\n${propsMatch[2]}\n}\n`;
-} else {
-  propsContent = `export interface ${fileName}Props {\n  // TODO: Add props\n}\n`;
-}
+// Extract types from the component file
+const typeRegex =
+  /(?:export\s+)?(?:type|interface)\s+([A-Za-z0-9_]+)(?:<.*?>)?\s*(?:=|{)/g;
+const typeMatches = [...componentContent.matchAll(typeRegex)];
+const types = typeMatches
+  .map(match => {
+    // Find the full type definition
+    const startIdx = match.index;
+    let braceCount = 0;
+    let endIdx = componentContent.length;
 
-// Write the types file
-console.log(`Creating ${fileName}Types.ts...`);
-fs.writeFileSync(
-  path.join(newDirPath, `${fileName}Types.ts`),
-  `/**\n * ${fileName} Types\n */\n\n${propsContent}`
-);
+    for (let i = startIdx; i < componentContent.length; i++) {
+      if (componentContent[i] === '{') braceCount++;
+      if (componentContent[i] === '}') {
+        braceCount--;
+        if (braceCount === 0 && componentContent[i - 1] !== '\\') {
+          endIdx = i + 1;
+          break;
+        }
+      }
 
-// Try to extract state hooks to create a custom hook
-const stateHooksRegex = /const\s+\[(\w+),\s*set(\w+)\]\s*=\s*useState[<(].*?[>)]/g;
-const stateHooks = [...fileContent.matchAll(stateHooksRegex)];
-
-let customHookContent = `import { useState } from 'react';\n\n/**\n * Custom hook for ${fileName} state management\n */\nexport const use${fileName}State = () => {\n`;
-if (stateHooks.length > 0) {
-  stateHooks.forEach(match => {
-    const stateName = match[1];
-    const capitalizedStateName = match[2];
-    customHookContent += `  const [${stateName}, set${capitalizedStateName}] = useState(/* TODO: Add proper type and initial value */);\n`;
-  });
-} else {
-  customHookContent += '  // TODO: Add state variables\n';
-}
-
-customHookContent += '\n  return {\n';
-if (stateHooks.length > 0) {
-  stateHooks.forEach(match => {
-    const stateName = match[1];
-    const capitalizedStateName = match[2];
-    customHookContent += `    ${stateName},\n    set${capitalizedStateName},\n`;
-  });
-} else {
-  customHookContent += '    // TODO: Return state and setters\n';
-}
-customHookContent += '  };\n};\n';
-
-// Write the custom hook file
-console.log(`Creating use${fileName}State.ts...`);
-fs.writeFileSync(
-  path.join(newDirPath, `use${fileName}State.ts`),
-  customHookContent
-);
-
-// Create index.ts file
-console.log('Creating index.ts...');
-fs.writeFileSync(
-  path.join(newDirPath, 'index.ts'),
-  `export { ${fileName} } from './${fileName}';\nexport * from './${fileName}Types';\n`
-);
-
-// Extract the component JSX
-const componentRegex = /return\s*\(\s*<([\s\S]*?)>\s*([\s\S]*?)\s*<\/.*?>\s*\);/;
-const componentMatch = fileContent.match(componentRegex);
-let componentJsx = '';
-
-if (componentMatch) {
-  componentJsx = componentMatch[0];
-} else {
-  componentJsx = 'return (\n    <div>\n      {/* TODO: Implement component */}\n    </div>\n  );';
-}
-
-// Try to identify sub-components
-// Find complex JSX elements that might be candidates for extraction
-const jsxElementRegex = /<([A-Z][A-Za-z0-9]*).*?>/g;
-const jsxMatches = [...fileContent.matchAll(jsxElementRegex)];
-
-// Count occurrences of each JSX element
-const jsxCounts = {};
-jsxMatches.forEach(match => {
-  const elementName = match[1];
-  if (elementName !== fileName && elementName !== 'React') {
-    jsxCounts[elementName] = (jsxCounts[elementName] || 0) + 1;
-  }
-});
-
-// Get all repeated JSX elements
-const repeatedJsx = Object.entries(jsxCounts)
-  .filter(([_, count]) => count > 1)
-  .sort((a, b) => b[1] - a[1]);
-
-// Generate component skeletons
-if (repeatedJsx.length > 0) {
-  console.log('Generating sub-component skeletons...');
-  
-  repeatedJsx.forEach(([element, count]) => {
-    const subComponentPath = path.join(newDirPath, 'components', `${element}.tsx`);
-    if (!fs.existsSync(path.dirname(subComponentPath))) {
-      fs.mkdirSync(path.dirname(subComponentPath), { recursive: true });
+      // Handle "type X = Y" format without braces
+      if (componentContent[i] === ';' && braceCount === 0) {
+        endIdx = i + 1;
+        break;
+      }
     }
-    
-    fs.writeFileSync(
-      subComponentPath,
-      `import React from 'react';\n\ninterface ${element}Props {\n  // TODO: Add props\n}\n\n/**\n * ${element} Component\n * Extracted from ${fileName}\n */\nexport const ${element}: React.FC<${element}Props> = (props) => {\n  return (\n    <div>\n      {/* TODO: Implement component */}\n    </div>\n  );\n};\n`
-    );
-    
-    console.log(`  - Created ${element}.tsx (appears ${count} times in original)`);
-  });
+
+    return componentContent.substring(startIdx, endIdx);
+  })
+  .join('\n\n');
+
+// Create the new directory structure
+// eslint-disable-next-line no-console
+console.log(`\n🏗️ Creating directory structure for ${baseName}...`);
+if (!fs.existsSync(newDirPath)) {
+  fs.mkdirSync(newDirPath);
+  // eslint-disable-next-line no-console
+  console.log(`✅ Created directory: ${newDirPath}`);
 }
 
-// Create stub for main component file
-console.log(`Creating ${fileName}.tsx...`);
-fs.writeFileSync(
-  path.join(newDirPath, `${fileName}.tsx`),
-  `import React from 'react';\nimport { ${fileName}Props } from './${fileName}Types';\nimport { use${fileName}State } from './use${fileName}State';\n\n// Import sub-components\n${repeatedJsx.map(([element]) => `import { ${element} } from './components/${element}';\n`).join('')}\n/**\n * ${fileName} Component\n */\nexport const ${fileName}: React.FC<${fileName}Props> = (props) => {\n  // Use the custom hook for state management\n  const { ${stateHooks.map(match => match[1]).join(', ') || '/* state variables */'} } = use${fileName}State();\n  \n  // TODO: Move the original implementation here and refactor\n  ${componentJsx}\n};\n`
+const componentsDir = path.join(newDirPath, 'components');
+if (!fs.existsSync(componentsDir)) {
+  fs.mkdirSync(componentsDir);
+  // eslint-disable-next-line no-console
+  console.log(`✅ Created directory: ${componentsDir}`);
+}
+
+// Create the files for the refactored component
+// eslint-disable-next-line no-console
+console.log('\n📝 Creating files...');
+
+// 1. Create the types file
+const typesContent = `/**
+ * Types for ${baseName} component
+ */
+${imports}
+
+${
+  types ||
+  `// Add your types here
+export interface ${baseName}Props {
+  // Add props here
+}
+`
+}
+`;
+
+const typesPath = path.join(newDirPath, `${baseName}Types.ts`);
+fs.writeFileSync(typesPath, typesContent);
+// eslint-disable-next-line no-console
+console.log(`✅ Created: ${typesPath}`);
+
+// 2. Create the state hook file
+const stateHookContent = `/**
+ * State management for ${baseName} component
+ */
+import { useState, useEffect } from 'react';
+import { ${baseName}Props } from './${baseName}Types';
+
+export const use${baseName}State = (props: ${baseName}Props) => {
+  // Add your state variables and hooks here
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Initialize component
+  }, []);
+
+  // Add your handlers and business logic here
+
+  return {
+    // Return state and handlers
+    loading,
+    setLoading,
+  };
+};
+`;
+
+const stateHookPath = path.join(newDirPath, `use${baseName}State.ts`);
+fs.writeFileSync(stateHookPath, stateHookContent);
+// eslint-disable-next-line no-console
+console.log(`✅ Created: ${stateHookPath}`);
+
+// 3. Create the main component file
+const mainComponentContent = `/**
+ * ${baseName} Component
+ */
+import { ${baseName}Props } from './${baseName}Types';
+import { use${baseName}State } from './use${baseName}State';
+
+export const ${baseName} = (props: ${baseName}Props) => {
+  const {
+    loading,
+  } = use${baseName}State(props);
+
+  return (
+    <div>
+      {/* Your component JSX here */}
+      {loading ? <div>Loading...</div> : <div>Component Content</div>}
+    </div>
+  );
+};
+`;
+
+const mainComponentPath = path.join(newDirPath, `${baseName}.tsx`);
+fs.writeFileSync(mainComponentPath, mainComponentContent);
+// eslint-disable-next-line no-console
+console.log(`✅ Created: ${mainComponentPath}`);
+
+// 4. Create index file for re-exporting
+const indexContent = `/**
+ * Export ${baseName} component and related types
+ */
+export * from './${baseName}';
+export * from './${baseName}Types';
+`;
+
+const indexPath = path.join(newDirPath, 'index.ts');
+fs.writeFileSync(indexPath, indexContent);
+// eslint-disable-next-line no-console
+console.log(`✅ Created: ${indexPath}`);
+
+// 5. Create an example sub-component
+const subComponentContent = `/**
+ * SubComponent for ${baseName}
+ */
+import React from 'react';
+
+interface SubComponentProps {
+  title: string;
+}
+
+export const SubComponent = ({ title }: SubComponentProps) => {
+  return (
+    <div>
+      <h3>{title}</h3>
+      {/* Add your JSX here */}
+    </div>
+  );
+};
+`;
+
+const subComponentPath = path.join(componentsDir, 'SubComponent.tsx');
+fs.writeFileSync(subComponentPath, subComponentContent);
+// eslint-disable-next-line no-console
+console.log(`✅ Created: ${subComponentPath}`);
+
+// Provide next steps
+// eslint-disable-next-line no-console
+console.log('\n🎉 Component refactoring structure created!');
+// eslint-disable-next-line no-console
+console.log('\nNext steps:');
+// eslint-disable-next-line no-console
+console.log(
+  '1. Move your component logic from the original file to the new structure'
 );
+// eslint-disable-next-line no-console
+console.log('2. Update imports in files that use this component');
+// eslint-disable-next-line no-console
+console.log('3. Once everything is working, you can remove the original file');
+// eslint-disable-next-line no-console
+console.log(`\nTo remove the original file: rm ${targetFile}`);
 
-// Create backup of original file
-console.log(`Creating backup of original file...`);
-fs.copyFileSync(targetFile, `${targetFile}.bak`);
-
-console.log(`\n✅ Refactoring structure created for ${fileName}!`);
-console.log(`\nNext steps:\n1. Compare the original file (${targetFile}.bak) with the new structure`);
-console.log(`2. Move the component logic to ${newDirPath}/${fileName}.tsx`);
-console.log(`3. Implement the sub-components in ${newDirPath}/components/`);
-console.log(`4. Update the custom hook in ${newDirPath}/use${fileName}State.ts`);
-console.log(`5. Update imports in other files to use the new structure\n`); 
+// eslint-disable-next-line no-console
+console.log('\nHappy refactoring! 🚀');

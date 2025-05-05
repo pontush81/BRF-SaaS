@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 
 /**
  * API-endpoint för diagnostik
- * 
+ *
  * Denna endpoint samlar detaljerad information om servermiljön,
  * konfiguration och nätverksstatus för att hjälpa till vid felsökning.
  */
@@ -12,19 +12,42 @@ import { cookies } from 'next/headers';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Definiera interface för tester
+interface ConnectionTestResult {
+  name: string;
+  url?: string;
+  result: {
+    success: boolean;
+    status?: number;
+    error?: string;
+    timing?: number;
+    resolved?: boolean;
+    ip?: string;
+  };
+}
+
 // Förberedda test URLs baserat på projekt ID
 const getTestUrls = () => {
   if (!SUPABASE_URL) return [];
-  
+
   try {
     const urlObj = new URL(SUPABASE_URL);
     const projectId = urlObj.hostname.split('.')[0];
-    
+
     return [
       { name: 'Health Check', url: `${SUPABASE_URL}/auth/v1/health` },
-      { name: 'Auth API', url: `${SUPABASE_URL}/auth/v1/token?grant_type=none` },
-      { name: 'REST API', url: `${SUPABASE_URL}/rest/v1/?apikey=${SUPABASE_ANON_KEY}` },
-      { name: 'Public Project Page', url: `https://supabase.com/dashboard/project/${projectId}/api` },
+      {
+        name: 'Auth API',
+        url: `${SUPABASE_URL}/auth/v1/token?grant_type=none`,
+      },
+      {
+        name: 'REST API',
+        url: `${SUPABASE_URL}/rest/v1/?apikey=${SUPABASE_ANON_KEY}`,
+      },
+      {
+        name: 'Public Project Page',
+        url: `https://supabase.com/dashboard/project/${projectId}/api`,
+      },
     ];
   } catch (e) {
     console.error('Fel vid parsning av Supabase URL:', e);
@@ -33,125 +56,151 @@ const getTestUrls = () => {
 };
 
 // Test nätverksanslutning mot en URL
-const testConnection = async (url: string): Promise<{
+const testConnection = async (
+  url: string
+): Promise<{
   success: boolean;
   status?: number;
   error?: string;
   timing: number;
 }> => {
   const startTime = Date.now();
-  
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
+
     const response = await fetch(url, {
       method: 'GET',
       signal: controller.signal,
       headers: {
-        'apikey': SUPABASE_ANON_KEY || '',
-        'Content-Type': 'application/json'
-      }
+        apikey: SUPABASE_ANON_KEY || '',
+        'Content-Type': 'application/json',
+      },
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     const endTime = Date.now();
-    
+
     return {
       success: response.ok,
       status: response.status,
-      timing: endTime - startTime
+      timing: endTime - startTime,
     };
   } catch (error) {
     const endTime = Date.now();
-    
+
     let errorMessage = 'Unknown error';
     if (error instanceof Error) {
       errorMessage = error.message;
-      
+
       if (error.name === 'AbortError') {
         errorMessage = 'Request timed out after 5 seconds';
       }
     }
-    
+
     return {
       success: false,
       error: errorMessage,
-      timing: endTime - startTime
+      timing: endTime - startTime,
     };
   }
 };
 
 // Kontrollera DNS-inställningar
-const checkDns = async (hostname: string): Promise<{
-  resolved: boolean;
+const checkDns = async (
+  hostname: string
+): Promise<{
+  success: boolean;
+  resolved?: boolean;
   error?: string;
   ip?: string;
 }> => {
-  // I server-side kontext kan vi inte göra DNS-uppslagningar direkt
-  // Vi simulerar genom att försöka nå adressen
   try {
+    // Vi använder en enkel fetch som proxy för DNS-check,
+    // eftersom edge-runtime inte har tillgång till DNS-moduler
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    
-    const response = await fetch(`https://${hostname}/`, {
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const res = await fetch(`https://${hostname}/ping`, {
       method: 'HEAD',
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     return {
+      success: true,
       resolved: true,
-      // Vi kan inte få faktisk IP i server-side
-      ip: 'Server-side DNS lookup succeeded'
+      ip: 'resolved', // Vi kan inte få faktisk IP i edge runtime
     };
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        success: false,
+        resolved: false,
+        error: 'DNS lookup timed out',
+      };
+    }
+
     return {
+      success: false,
       resolved: false,
-      error: error instanceof Error ? error.message : 'Unknown DNS error'
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 };
 
+// Interface för cookie-options
+interface CookieOptions {
+  domain?: string;
+  path?: string;
+  expires?: Date;
+  maxAge?: number;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+}
+
 // Testa supabase klient konfiguration
 const testSupabaseClient = async () => {
   try {
-    // Använd server client för test
-    const cookieStore = cookies();
-    const supabase = createServerClient(
-      SUPABASE_URL || '',
-      SUPABASE_ANON_KEY || '',
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: any) {
-            // Gör inget i denna diagnostikfunktion
-          },
-          remove(name: string, options: any) {
-            // Gör inget i denna diagnostikfunktion
-          },
-        },
-      }
-    );
+    // För teständamål, anslut direkt utan att försöka använda cookies
+    // Detta ger fortfarande diagnostisk information om anslutningen
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return {
+        success: false,
+        error: 'Missing Supabase URL or key',
+      };
+    }
 
-    // Försök göra ett enkelt anrop
-    const { data, error } = await supabase.auth.getSession();
-    
-    return {
-      success: !error,
-      session: data.session ? 'Present' : 'Missing',
-      error: error ? error.message : undefined
-    };
-    
+    // Gör ett direkt API-anrop istället för att använda klienten
+    const healthUrl = `${SUPABASE_URL}/rest/v1/health?apikey=${SUPABASE_ANON_KEY}`;
+    const response = await fetch(healthUrl, {
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        success: true,
+        details: data,
+      };
+    } else {
+      return {
+        success: false,
+        error: `Server responded with status ${response.status}`,
+      };
+    }
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown client error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     };
   }
 };
@@ -161,22 +210,25 @@ const testSupabaseClient = async () => {
  */
 export async function GET(req: NextRequest) {
   console.log('[Diagnostics] Request received:', req.url);
-  
+
   const startTime = Date.now();
-  
+
   try {
     // Validera Supabase URL
     let parsedSupabaseUrl: URL | null = null;
     let projectId = 'unknown';
     try {
-      if (SUPABASE_URL) {
-        parsedSupabaseUrl = new URL(SUPABASE_URL);
-        projectId = parsedSupabaseUrl.hostname.split('.')[0];
+      const supabaseUrl =
+        SUPABASE_URL && SUPABASE_URL.trim() !== '' ? SUPABASE_URL : '';
+      if (supabaseUrl) {
+        parsedSupabaseUrl = new URL(supabaseUrl);
+        const hostnameParts = parsedSupabaseUrl.hostname.split('.');
+        projectId = hostnameParts[0] || 'unknown';
       }
     } catch (e) {
       console.error('[Diagnostics] Invalid URL format:', e);
     }
-    
+
     // Samla grundläggande miljöinformation
     const environment = {
       NODE_ENV: process.env.NODE_ENV,
@@ -187,68 +239,72 @@ export async function GET(req: NextRequest) {
       HOSTNAME: process.env.HOSTNAME || 'unknown',
       runtime: 'edge',
     };
-    
+
     // Samla information om Supabase-konfiguration
     const supabaseConfig = {
-      url: SUPABASE_URL,
+      url: SUPABASE_URL ?? '',
       hasApiKey: !!SUPABASE_ANON_KEY,
       projectId,
       validUrl: !!parsedSupabaseUrl,
-      urlDetails: parsedSupabaseUrl ? {
-        protocol: parsedSupabaseUrl.protocol,
-        hostname: parsedSupabaseUrl.hostname,
-        pathname: parsedSupabaseUrl.pathname || '/',
-      } : null,
+      urlDetails: parsedSupabaseUrl
+        ? {
+            protocol: parsedSupabaseUrl.protocol,
+            hostname: parsedSupabaseUrl.hostname,
+            pathname: parsedSupabaseUrl.pathname || '/',
+          }
+        : null,
     };
-    
+
     // Undersök request för att hjälpa debugging
     const requestInfo = {
       url: req.url,
       method: req.method,
       headers: Object.fromEntries(req.headers.entries()),
-      ip: req.headers.get('x-real-ip') || req.headers.get('x-forwarded-for') || 'unknown',
+      ip:
+        req.headers.get('x-real-ip') ||
+        req.headers.get('x-forwarded-for') ||
+        'unknown',
       userAgent: req.headers.get('user-agent') || 'unknown',
     };
-    
+
     // Hämta alla cookies
     const cookieStore = cookies();
     const allCookies = cookieStore.getAll().map(c => c.name);
-    const sessionCookies = cookieStore.getAll()
+    const sessionCookies = cookieStore
+      .getAll()
       .filter(c => c.name.startsWith('sb-') || c.name.includes('supabase'))
-      .map(c => ({ 
-        name: c.name, 
+      .map(c => ({
+        name: c.name,
         // Dölja värden av säkerhetsskäl, visa bara om token finns
         hasValue: c.value ? true : false,
-        length: c.value ? c.value.length : 0
+        length: c.value ? c.value.length : 0,
       }));
-    
+
     // Utför nätverkstester
-    let connectionTests = [];
+    const connectionTests: ConnectionTestResult[] = [];
     if (parsedSupabaseUrl) {
       // DNS-check
       const dnsCheck = await checkDns(parsedSupabaseUrl.hostname);
-      
+
       // Individuella testanrop till viktiga endpoints
       const testUrls = getTestUrls();
-      const testResults = [];
-      
+      const testResults: ConnectionTestResult[] = [];
+
       for (const test of testUrls) {
         testResults.push({
           name: test.name,
           url: test.url,
-          result: await testConnection(test.url)
+          result: await testConnection(test.url),
         });
       }
-      
-      connectionTests = [
-        { name: 'DNS Resolution', result: dnsCheck },
-        ...testResults
-      ];
+
+      connectionTests.push({ name: 'DNS Resolution', result: dnsCheck });
+      connectionTests.push(...testResults);
     }
-    
+
     // Testa Supabase-klient
     const clientTest = await testSupabaseClient();
-    
+
     // Slutlig diagnostikdata
     const diagnosticData = {
       timestamp: new Date().toISOString(),
@@ -259,35 +315,37 @@ export async function GET(req: NextRequest) {
       cookies: {
         count: allCookies.length,
         all: allCookies,
-        session: sessionCookies
+        session: sessionCookies,
       },
       tests: {
         connection: connectionTests,
-        client: clientTest
+        client: clientTest,
       },
       proxy: {
         url: '/api/proxy/health',
-        hint: 'Gör ett separat anrop till /api/proxy/health för att testa proxy-funktionaliteten'
-      }
+        hint: 'Gör ett separat anrop till /api/proxy/health för att testa proxy-funktionaliteten',
+      },
     };
-    
+
     // Returnera diagnostikdata som JSON
-    return NextResponse.json(diagnosticData, { 
+    return NextResponse.json(diagnosticData, {
       status: 200,
-      headers: { 'Cache-Control': 'no-store, max-age=0' }
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
-    
   } catch (error) {
     console.error('[Diagnostics] Error generating diagnostic data:', error);
-    
-    return NextResponse.json({
-      error: 'Failed to generate diagnostic data',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString()
-    }, { 
-      status: 500,
-      headers: { 'Cache-Control': 'no-store, max-age=0' }
-    });
+
+    return NextResponse.json(
+      {
+        error: 'Failed to generate diagnostic data',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        status: 500,
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      }
+    );
   }
-} 
+}

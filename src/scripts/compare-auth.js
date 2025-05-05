@@ -1,118 +1,211 @@
 #!/usr/bin/env node
 
 /**
- * Authentication Environment Comparison Tool
- * 
- * This script helps compare authentication behavior between environments
- * to ensure consistency between development and staging/production.
- * 
+ * Auth Method Comparison Tool
+ *
+ * This script compares different authentication methods for Supabase
+ * by measuring their performance, success rates, and reliability.
+ *
+ * It tests:
+ * - Direct Supabase authentication
+ * - Proxy-based authentication
+ * - Cookie handling
+ *
  * Usage:
- * - npm run compare-auth:dev (for development environment)
- * - npm run compare-auth:staging (for staging environment)
- * 
- * Make sure to add these scripts to package.json:
- * "scripts": {
- *   "compare-auth:dev": "NODE_ENV=development node src/scripts/compare-auth.js",
- *   "compare-auth:staging": "NODE_ENV=staging node src/scripts/compare-auth.js"
- * }
+ *   node src/scripts/compare-auth.js [iterations=5]
  */
 
+// Parse command line arguments
+const iterations = parseInt(process.argv[2], 10) || 5;
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars
 const fs = require('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars
 const path = require('path');
-const fetch = require('node-fetch');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { execSync } = require('child_process');
 
-// Determine environment
-const env = process.env.NODE_ENV || 'development';
-console.log(`Running auth comparison in ${env} environment`);
+// Test configuration
+const apiBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const apiEndpoint = `${apiBaseUrl}/api`;
+const proxyEndpoint = `${apiEndpoint}/supabase-proxy`;
+const directSupabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://supabase-test.handbok.org';
 
-// Configuration
-const config = {
-  development: {
-    baseUrl: 'http://localhost:3000',
-    mockCookieEnabled: true,
-  },
-  staging: {
-    baseUrl: process.env.STAGING_URL || 'https://staging.your-domain.com',
-    mockCookieEnabled: false,
-  }
+// Result storage
+const results = {
+  direct: { times: [], success: 0, fails: 0 },
+  proxy: { times: [], success: 0, fails: 0 },
+  cookies: { times: [], success: 0, fails: 0 },
 };
 
-// Get config for current environment
-const currentConfig = config[env];
-if (!currentConfig) {
-  console.error(`Unknown environment: ${env}`);
-  process.exit(1);
-}
+// eslint-disable-next-line no-console
+console.log(`🔍 Starting auth method comparison (${iterations} iterations)...`);
+// eslint-disable-next-line no-console
+console.log('='.repeat(50));
 
-// Test functions
-async function testAuthEndpoints() {
-  const endpoints = [
-    '/api/auth/current-user',
-    '/api/auth/get-user-role',
-  ];
-  
-  console.log('\n⚡ Testing API endpoints:');
-  
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(`${currentConfig.baseUrl}${endpoint}`);
-      const status = response.status;
-      let data = null;
-      
-      try {
-        data = await response.json();
-      } catch (e) {
-        // Response was not JSON
-      }
-      
-      console.log(`${endpoint}: Status ${status}`);
-      
-      if (data) {
-        console.log(`Response preview: ${JSON.stringify(data).substring(0, 100)}...`);
-      }
-    } catch (error) {
-      console.error(`Error testing ${endpoint}: ${error.message}`);
+// Cookie handling test
+// eslint-disable-next-line no-console
+console.log('\n🍪 Testing cookie handling...');
+
+for (let i = 0; i < iterations; i++) {
+  // eslint-disable-next-line no-console
+  console.log(`  Iteration ${i + 1}/${iterations}`);
+
+  try {
+    const start = Date.now();
+    const response = execSync(
+      `curl -s -X POST "${apiEndpoint}/auth/session" -H "Content-Type: application/json" -d '{"checkCookies": true}'`,
+      { encoding: 'utf8' }
+    );
+    const end = Date.now();
+
+    const data = JSON.parse(response);
+    if (data.cookiesEnabled) {
+      results.cookies.success++;
+      results.cookies.times.push(end - start);
+      // eslint-disable-next-line no-console
+      console.log(`  ✓ Cookies working (${end - start}ms)`);
+    } else {
+      results.cookies.fails++;
+      // eslint-disable-next-line no-console
+      console.log('  ✗ Cookies not working');
     }
+  } catch (_) {
+    // eslint-disable-next-line no-console
+    console.error('  ✗ Error testing cookies');
+    results.cookies.fails++;
   }
 }
 
-// Check mock auth behavior
-function testMockAuth() {
-  console.log('\n🔒 Mock authentication settings:');
-  console.log(`- Environment: ${env}`);
-  console.log(`- Mock cookie enabled: ${currentConfig.mockCookieEnabled}`);
-  
-  // Check for environment variables
-  const hasMockVars = process.env.NEXT_PUBLIC_ENABLE_MOCK_AUTH === 'true';
-  console.log(`- NEXT_PUBLIC_ENABLE_MOCK_AUTH set: ${hasMockVars}`);
-  
-  if (env === 'development') {
-    console.log('\nIn development environment:');
-    console.log('- Check if mock cookie (supabase-dev-auth) is working correctly using the AuthDebug component');
-    console.log('- Verify the login/logout button state reflects the auth status');
-    console.log('- Test that protected routes behave as expected');
-  } else {
-    console.log('\nIn non-development environment:');
-    console.log('- Verify that mock authentication is DISABLED');
-    console.log('- Confirm real auth endpoints are being used');
-    console.log('- Test authentication with a real user account');
+// Direct Supabase Auth test
+// eslint-disable-next-line no-console
+console.log('\n🔑 Testing direct Supabase auth...');
+
+for (let i = 0; i < iterations; i++) {
+  // eslint-disable-next-line no-console
+  console.log(`  Iteration ${i + 1}/${iterations}`);
+
+  try {
+    const start = Date.now();
+    const response = execSync(
+      `curl -s -X GET "${directSupabaseUrl}/rest/v1/" -H "apikey: ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}"`,
+      { encoding: 'utf8' }
+    );
+    const end = Date.now();
+
+    if (response && !response.includes('error')) {
+      results.direct.success++;
+      results.direct.times.push(end - start);
+      // eslint-disable-next-line no-console
+      console.log(`  ✓ Direct connection successful (${end - start}ms)`);
+    } else {
+      results.direct.fails++;
+      // eslint-disable-next-line no-console
+      console.log('  ✗ Direct connection failed');
+    }
+  } catch (_) {
+    results.direct.fails++;
+    // eslint-disable-next-line no-console
+    console.error('  ✗ Error connecting directly to Supabase');
   }
 }
 
-// Run tests
-async function runTests() {
-  console.log('==================================');
-  console.log(`🔍 BRF-SaaS Auth Comparison (${env})`);
-  console.log('==================================');
-  
-  testMockAuth();
-  await testAuthEndpoints();
-  
-  console.log('\n✅ Tests completed');
-  console.log('==================================');
+// Proxy auth test
+// eslint-disable-next-line no-console
+console.log('\n🔄 Testing proxy-based auth...');
+
+for (let i = 0; i < iterations; i++) {
+  // eslint-disable-next-line no-console
+  console.log(`  Iteration ${i + 1}/${iterations}`);
+
+  try {
+    const start = Date.now();
+    const response = execSync(
+      `curl -s -X POST "${proxyEndpoint}" -H "Content-Type: application/json" -d '{"url": "rest/v1/", "method": "GET"}'`,
+      { encoding: 'utf8' }
+    );
+    const end = Date.now();
+
+    const data = JSON.parse(response);
+    if (data && !data.error) {
+      results.proxy.success++;
+      results.proxy.times.push(end - start);
+      // eslint-disable-next-line no-console
+      console.log(`  ✓ Proxy connection successful (${end - start}ms)`);
+    } else {
+      results.proxy.fails++;
+      // eslint-disable-next-line no-console
+      console.log('  ✗ Proxy connection failed');
+    }
+  } catch (_) {
+    results.proxy.fails++;
+    // eslint-disable-next-line no-console
+    console.error('  ✗ Error connecting via proxy');
+  }
 }
 
-runTests().catch(error => {
-  console.error('Error running tests:', error);
-  process.exit(1);
-}); 
+// Calculate results
+function getAverage(arr) {
+  if (arr.length === 0) return 0;
+  return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+}
+
+function getSuccessRate(success, total) {
+  return Math.round((success / total) * 100);
+}
+
+// eslint-disable-next-line no-console
+console.log('\n📊 RESULTS:');
+// eslint-disable-next-line no-console
+console.log('='.repeat(50));
+
+// eslint-disable-next-line no-console
+console.log('\n🍪 Cookie Handling:');
+// eslint-disable-next-line no-console
+console.log(
+  `  Success Rate: ${getSuccessRate(results.cookies.success, iterations)}%`
+);
+// eslint-disable-next-line no-console
+console.log(`  Average Time: ${getAverage(results.cookies.times)}ms`);
+
+// eslint-disable-next-line no-console
+console.log('\n🔑 Direct Supabase Auth:');
+// eslint-disable-next-line no-console
+console.log(
+  `  Success Rate: ${getSuccessRate(results.direct.success, iterations)}%`
+);
+// eslint-disable-next-line no-console
+console.log(`  Average Time: ${getAverage(results.direct.times)}ms`);
+
+// eslint-disable-next-line no-console
+console.log('\n🔄 Proxy Auth:');
+// eslint-disable-next-line no-console
+console.log(
+  `  Success Rate: ${getSuccessRate(results.proxy.success, iterations)}%`
+);
+// eslint-disable-next-line no-console
+console.log(`  Average Time: ${getAverage(results.proxy.times)}ms`);
+
+// eslint-disable-next-line no-console
+console.log('\n💡 RECOMMENDATION:');
+if (
+  results.direct.success >= results.proxy.success &&
+  getAverage(results.direct.times) <= getAverage(results.proxy.times)
+) {
+  // eslint-disable-next-line no-console
+  console.log(
+    '  Direct Supabase Auth is recommended (faster and more reliable)'
+  );
+} else if (results.proxy.success > results.direct.success) {
+  // eslint-disable-next-line no-console
+  console.log('  Proxy Auth is recommended (more reliable)');
+} else {
+  // eslint-disable-next-line no-console
+  console.log('  Proxy Auth is recommended (faster)');
+}
+
+// eslint-disable-next-line no-console
+console.log(
+  '\nTest completed. Use these results to configure your authentication strategy.'
+);
