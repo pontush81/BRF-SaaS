@@ -47,10 +47,14 @@ export async function getCurrentUserServer() {
       return null;
     }
 
+    // TEMPORÄR LÖSNING: Om vi bara har Supabase-autentisering men inte databasåtkomst,
+    // returnera en grundläggande användarobjekt baserat på Supabase-användardata
+    let dbUser = null;
+
     // Hämta användare från databas via repository
     console.log('Fetching user from database with email:', user.email);
     try {
-      const dbUser = await userRepository.getUserWithOrganizations(user.email);
+      dbUser = await userRepository.getUserWithOrganizations(user.email);
       console.log('DB User fetch result:', {
         userExists: !!dbUser,
         userId: dbUser?.id,
@@ -95,7 +99,15 @@ export async function getCurrentUserServer() {
           } as UserWithOrg;
         } catch (createError) {
           console.error('Failed to create missing user:', createError);
-          return null;
+          // FALLBACK: Returnera ändå en basisk användare istället för null
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.email.split('@')[0], // Använd del av email som namn
+            role: UserRole.MEMBER,
+            organizationId: null,
+            organization: null,
+          } as UserWithOrg;
         }
       }
 
@@ -123,7 +135,15 @@ export async function getCurrentUserServer() {
       } as UserWithOrg;
     } catch (error) {
       console.error('Error fetching user from database:', error);
-      return null;
+      // FALLBACK: Returnera ändå en basisk användare istället för null
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.email.split('@')[0], // Använd del av email som namn
+        role: UserRole.MEMBER,
+        organizationId: null,
+        organization: null,
+      } as UserWithOrg;
     }
   } catch (error) {
     console.error('Error in getCurrentUserServer:', error);

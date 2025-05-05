@@ -53,10 +53,10 @@ export default async function Dashboard() {
       );
     } catch (dbError) {
       console.error('Error finding organization:', dbError);
-      // Continue without organization info in development
-      if (process.env.NODE_ENV !== 'development') {
-        throw dbError;
-      }
+      // Continue without organization info - temporärt ändrat till alla miljöer
+      // if (process.env.NODE_ENV !== 'development') {
+      //   throw dbError;
+      // }
     }
 
     return (
