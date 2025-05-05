@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@/supabase-client';
 import {
@@ -47,6 +47,11 @@ export function useSignIn({
   const finalRedirectPath =
     redirectPath || searchParams.get('redirect') || '/dashboard';
 
+  // Kontrollera nätverksstatus när komponenten laddas
+  useEffect(() => {
+    checkNetworkStatus();
+  }, []);
+
   /**
    * Huvudfunktion för inloggning
    */
@@ -54,6 +59,15 @@ export function useSignIn({
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
+
+    // Logga miljöinformation
+    console.log('Inloggningsförsök', {
+      environment: process.env.NODE_ENV,
+      deploymentEnv: process.env.NEXT_PUBLIC_DEPLOYMENT_ENV || 'not set',
+      email: email.substring(0, 3) + '...',
+      supabaseUrlConfig: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 10) + '...' || 'saknas',
+      redirectTo: finalRedirectPath
+    });
 
     try {
       // Kontrollera nätverksstatus först
@@ -89,6 +103,10 @@ export function useSignIn({
         'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
       document.cookie =
         'sb-provider-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      document.cookie =
+        'auth-status=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+      document.cookie =
+        'staging-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
 
       // Rensa även cookies enligt äldre namnmönster
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -168,11 +186,68 @@ export function useSignIn({
 
       console.log('Sätter cookies manuellt...');
 
-      // Sätt access token
-      document.cookie = `sb-access-token=${accessToken}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+      // Bestäm cookie-domain baserat på miljö
+      let domain = undefined;
+      const isProduction = process.env.NODE_ENV === 'production';
+      const isStaging = isProduction && process.env.NEXT_PUBLIC_DEPLOYMENT_ENV === 'staging';
 
-      // Sätt refresh token
-      document.cookie = `sb-refresh-token=${refreshToken}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+      if (isProduction) {
+        // För staging, använd auto-detekterad domän
+        if (isStaging) {
+          // Extrahera basdomänen från host
+          const hostname = window.location.hostname;
+          const hostParts = hostname.split('.');
+          if (hostParts.length >= 2) {
+            // För staging.handbok.org -> använd handbok.org
+            domain = hostParts.slice(hostParts.length - 2).join('.');
+          } else {
+            domain = hostname;
+          }
+          console.log('Använde auto-detekterad domän för staging:', domain);
+        } else {
+          domain = process.env.NEXT_PUBLIC_APP_DOMAIN || undefined;
+        }
+        console.log('Använder cookie domain:', domain);
+      }
+
+      // Säkerhetsinställningar för cookies
+      // I staging-miljö, sätt inte secure-flaggan om vi inte använder HTTPS
+      const isSecure = isProduction &&
+                       window.location.protocol === 'https:' &&
+                       !isStaging;
+
+      console.log('Cookie säkerhet:', {
+        isProduction,
+        isStaging,
+        isSecure,
+        domain,
+        protocol: window.location.protocol,
+        hostname: window.location.hostname
+      });
+
+      // Skapa gemensamma cookie-inställningar
+      const cookieSettings = {
+        path: '/',
+        maxAge: 60 * 60 * 24,
+        sameSite: 'Lax',
+        secure: isSecure,
+        domain: domain
+      };
+
+      // Sätt access token (1 dag livstid)
+      document.cookie = `sb-access-token=${accessToken}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax${isSecure ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`;
+
+      // Sätt refresh token (30 dagar livstid)
+      document.cookie = `sb-refresh-token=${refreshToken}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax${isSecure ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`;
+
+      // Sätt en särskild status-cookie som är läsbar av klientskript
+      document.cookie = `auth-status=authenticated; path=/; max-age=${60 * 60 * 24}; SameSite=Lax${isSecure ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`;
+
+      // Särskild flagga för staging-miljö
+      if (isStaging) {
+        document.cookie = `staging-auth=true; path=/; max-age=${60 * 60 * 24}; SameSite=Lax${isSecure ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`;
+        console.log('Staging auth cookie satt');
+      }
 
       // Sätt även i äldre format för kompatibilitet
       if (projectRef) {
@@ -183,7 +258,7 @@ export function useSignIn({
           expires_at: session.expires_at,
         });
 
-        document.cookie = `sb-${projectRef}-auth-token=${encodeURIComponent(sessionStr)}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+        document.cookie = `sb-${projectRef}-auth-token=${encodeURIComponent(sessionStr)}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax${isSecure ? '; Secure' : ''}${domain ? `; Domain=${domain}` : ''}`;
       }
 
       // Om vi är i utvecklingsmiljö, sätt också server-auth-cookie
@@ -203,7 +278,7 @@ export function useSignIn({
       // Anropa session endpoint för att synkronisera server-side session
       try {
         console.log('Synkroniserar server-side session');
-        await fetch('/api/auth/session', {
+        const sessionResponse = await fetch('/api/auth/session', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -213,11 +288,19 @@ export function useSignIn({
             refreshToken,
           }),
         });
+
+        if (!sessionResponse.ok) {
+          console.error('Session sync error:', await sessionResponse.text());
+        } else {
+          const responseData = await sessionResponse.json();
+          console.log('Session sync response:', responseData);
+        }
       } catch (syncError) {
         console.error('Kunde inte synkronisera server session:', syncError);
       }
 
       // Kort fördröjning innan omdirigering för att säkerställa att cookies har sparats
+      console.log(`Omdirigerar till ${finalRedirectPath} om 1 sekund...`);
       setTimeout(() => {
         // Använd direkt omladdning istället för router för att säkerställa att alla cookies laddas
         window.location.href = finalRedirectPath;
@@ -248,128 +331,46 @@ export function useSignIn({
     try {
       setIsLoading(true);
       setErrorMessage(
-        'Provar att logga in via proxy... detta kan ta lite tid.'
+        'Försöker alternativ inloggningsmetod via proxy...'
       );
 
-      // Först kontrollera om proxyn fungerar
-      const proxyStatus = await checkSupabaseViaProxy();
-      if (!proxyStatus.reachable) {
-        throw new Error(
-          `Kunde inte nå Supabase via proxy: ${proxyStatus.error || 'Okänt fel'}`
-        );
-      }
-
-      // I development-läge kan vi använda en mock-inloggning
-      if (process.env.NODE_ENV === 'development') {
-        console.log('MOCK LOGIN via proxy in development mode');
-        const mockUser = {
-          id: 'mock-user-id',
-          email: email,
-          user_metadata: { name: 'Test User' },
-        };
-
-        // Simulera inloggning
-        setUser(mockUser as any);
-
-        // Lagra sessionsinformation i localStorage för att simulera session
-        localStorage.setItem(
-          'supabase.auth.token',
-          JSON.stringify({
-            currentSession: {
-              access_token: 'mock-token',
-              user: mockUser,
-            },
-          })
-        );
-
-        router.push('/dashboard');
-        return;
-      }
-
-      // I produktion: gör en fetch-förfrågan till proxy-endpunkten
-      // Använda 'auth/v1/token' istället för 'rest/v1/auth/token'
-      console.log('Attempting proxy login via auth/v1/token endpoint');
-      const response = await fetch('/api/proxy/auth/v1/token', {
+      // Skicka autentiseringsförfrågan till vår API-proxy
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          email,
-          password,
-          grant_type: 'password',
-        }),
-        credentials: 'include', // Viktigt för att hantera cookies
+        body: JSON.stringify({ email, password }),
       });
 
-      console.log('Proxy login response status:', response.status);
-
-      // Förbättrad felhantering för att undvika JSON-parser fel
       if (!response.ok) {
-        let errorMessage = `Server responded with status ${response.status}`;
-
-        try {
-          // Försök parse:a JSON om det finns
-          const responseText = await response.text();
-          if (responseText && responseText.trim()) {
-            try {
-              const errorData = JSON.parse(responseText);
-              errorMessage =
-                errorData.error || errorData.message || errorMessage;
-            } catch (e) {
-              // Om vi inte kan parse:a JSON, använd texten direkt
-              errorMessage = responseText.substring(0, 100); // Begränsa längden
-            }
-          }
-        } catch (e) {
-          console.error('Error reading response:', e);
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      // Säker JSON parsning
-      let authData;
-      try {
-        const responseText = await response.text();
-        authData = responseText ? JSON.parse(responseText) : null;
-
-        if (!authData) {
-          throw new Error('Tomt svar från servern');
-        }
-      } catch (jsonError) {
-        console.error('JSON parsing error:', jsonError);
-        // @ts-ignore - Safely handle jsonError which could be unknown
-        const errorMessage =
-          jsonError instanceof Error
-            ? // @ts-ignore - Accessing message on jsonError which might be unknown
-              jsonError.message
-            : 'Okänt fel vid tolkning av serverns svar';
-        throw new Error(`Kunde inte tolka serverns svar: ${errorMessage}`);
-      }
-
-      // Uppdatera session manuellt
-      if (authData.user && authData.session) {
-        setUser(authData.user);
-
-        // Synkronisera med Supabase klient via localStorage
-        localStorage.setItem(
-          'supabase.auth.token',
-          JSON.stringify({
-            currentSession: authData.session,
-          })
-        );
-
-        router.push(finalRedirectPath);
-      } else {
+        const errorData = await response.json();
         throw new Error(
-          'Inloggning via proxy lyckades, men ingen användare returnerades'
+          errorData.error || 'Kunde inte autentisera via proxy'
         );
       }
+
+      const data = await response.json();
+
+      if (!data.session) {
+        throw new Error('Ingen session returnerades från proxy-inloggning');
+      }
+
+      setUser(data.user);
+
+      // Cookies sätts automatiskt av API:t
+      console.log(
+        'Inloggning via proxy lyckades, omdirigerar till dashboard...'
+      );
+      setTimeout(() => {
+        window.location.href = finalRedirectPath;
+      }, 1000);
     } catch (error) {
-      console.error('Proxy login error:', error);
+      console.error('Proxy-inloggningsfel:', error);
       setErrorMessage(
-        `Kunde inte logga in via proxy: ${error instanceof Error ? error.message : String(error)}`
+        error instanceof Error
+          ? error.message
+          : 'Ett fel uppstod vid proxy-inloggning'
       );
     } finally {
       setIsLoading(false);
@@ -377,43 +378,50 @@ export function useSignIn({
   };
 
   /**
-   * Kontrollerar nätverksstatus och uppdaterar state
+   * Kontrollerar nätverksstatus för Supabase
    */
   const checkNetworkStatus = async () => {
-    setNetworkStatus(prev => ({ ...prev, checking: true }));
-
     try {
-      // Kontrollera anslutning via proxy
-      const proxyStatus = await checkSupabaseViaProxy();
+      setNetworkStatus(prev => ({ ...prev, checking: true }));
+
+      const directCheck = await checkConnectivity(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+      );
+
+      let proxyCheck = false;
+
+      if (!directCheck) {
+        proxyCheck = await checkSupabaseViaProxy();
+      }
 
       setNetworkStatus({
-        directSupabase: true, // Vi antar direkt anslutning är ok tills vi vet annat
-        proxySupabase: proxyStatus.reachable,
+        directSupabase: directCheck,
+        proxySupabase: proxyCheck,
         checking: false,
         lastChecked: new Date(),
-        error: proxyStatus.error,
-        detailedError: proxyStatus.details,
+        error: !directCheck
+          ? 'Problem med direkt anslutning till Supabase.'
+          : null,
       });
 
-      return proxyStatus;
+      // Om det finns problem med direktanslutning, försök hämta diagnostik
+      if (!directCheck) {
+        try {
+          const diagnostics = await getServerDiagnostics();
+          console.log('Server diagnostik:', diagnostics);
+        } catch (e) {
+          console.error('Kunde inte hämta serverdiagnostik:', e);
+        }
+      }
     } catch (error) {
-      console.error('Error checking network status:', error);
+      console.error('Nätverksstatuskontroll misslyckades:', error);
       setNetworkStatus({
         directSupabase: false,
         proxySupabase: false,
         checking: false,
         lastChecked: new Date(),
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unknown error checking network',
+        error: 'Kunde inte kontrollera nätverksstatus.',
       });
-
-      return {
-        status: 'error' as const,
-        reachable: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
     }
   };
 

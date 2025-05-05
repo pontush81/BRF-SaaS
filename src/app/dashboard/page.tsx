@@ -19,9 +19,121 @@ export default async function Dashboard() {
   try {
     console.log('Dashboard: Checking user authentication');
 
+    // Kontrollera om vi är i staging miljö
+    const isStaging = process.env.NODE_ENV === 'production' && process.env.DEPLOYMENT_ENV === 'staging';
+    console.log('Dashboard: Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      DEPLOYMENT_ENV: process.env.DEPLOYMENT_ENV || 'not set',
+      isStaging
+    });
+
     // Get the user from the server-side
     const cookieStore = cookies();
-    const user = await getServerSideUser(cookieStore);
+
+    // Logga tillgängliga cookies för felsökning
+    try {
+      const allCookies = cookieStore.getAll();
+      console.log('Dashboard: Available cookies:', allCookies.map(c => c.name));
+
+      // Kontrollera om vi har särskilda cookies
+      const hasAccessToken = !!cookieStore.get('sb-access-token');
+      const hasRefreshToken = !!cookieStore.get('sb-refresh-token');
+      const hasStagingAuth = !!cookieStore.get('staging-auth');
+
+      console.log('Dashboard: Auth tokens:', {
+        hasAccessToken,
+        hasRefreshToken,
+        hasStagingAuth
+      });
+
+      // För staging miljö, om vi har staging-auth cookie men ingen annan autentisering,
+      // tillåt åtkomst till dashboard för testning
+      if (isStaging && hasStagingAuth && (!hasAccessToken || !hasRefreshToken)) {
+        console.log('Dashboard: Using staging auth cookie for authentication');
+        const mockUser = {
+          id: 'staging-user-id',
+          email: 'staging@example.com',
+        };
+
+        // Fortsätt med dashboard-rendering med mock-användare
+        return (
+          <div className="max-w-4xl mx-auto px-4 py-8">
+            <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
+              <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö</h2>
+              <p className="text-sm text-yellow-700">
+                Du använder staging-miljön med en mock-användare.
+                Detta är endast för testning av gränssnittet.
+              </p>
+            </div>
+
+            <h1 className="text-3xl font-bold mb-6">
+              Välkommen till din dashboard (Staging)
+            </h1>
+
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-4">Din profil (Staging Mock)</h2>
+              <div className="space-y-2">
+                <p>
+                  <strong>Användar-ID:</strong> {mockUser.id}
+                </p>
+                <p>
+                  <strong>E-post:</strong> {mockUser.email}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Staging-test</h2>
+              <p>
+                Denna sida visas eftersom du har en staging-auth cookie,
+                men ingen giltig Supabase-session.
+              </p>
+              <div className="mt-4">
+                <a href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
+                  Gå tillbaka till inloggning
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    } catch (error) {
+      console.error('Dashboard: Error checking cookies:', error);
+    }
+
+    // Försök hämta användaren från servern
+    let user = null;
+    try {
+      user = await getServerSideUser(cookieStore);
+    } catch (authError) {
+      console.error('Dashboard: Error getting server-side user:', authError);
+
+      // Om vi är i staging och det är ett autentiseringsfel, visa ett mer användbart felmeddelande
+      if (isStaging) {
+        return (
+          <div className="max-w-4xl mx-auto px-4 py-8">
+            <div className="bg-red-100 p-4 rounded-lg border border-red-300 mb-6">
+              <h2 className="text-lg font-semibold text-red-800">Staging Authentication Error</h2>
+              <p className="text-sm text-red-700">
+                Det uppstod ett problem med autentiseringen i staging-miljön.
+                Detta kan bero på cookie-inställningar eller sessionshantering.
+              </p>
+              <pre className="mt-2 text-xs bg-red-50 p-2 rounded overflow-auto">
+                {String(authError)}
+              </pre>
+            </div>
+            <div className="mt-4">
+              <Link href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
+                Försök logga in igen
+              </Link>
+            </div>
+          </div>
+        );
+      }
+
+      // I andra miljöer, redirecta till login
+      return redirect('/login?error=auth-error');
+    }
 
     // If no user is found, redirect to login
     if (!user) {
@@ -61,6 +173,15 @@ export default async function Dashboard() {
 
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {isStaging && (
+          <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-300">
+            <h2 className="text-lg font-semibold text-yellow-800">Staging-miljö</h2>
+            <p className="text-sm text-yellow-700">
+              Du använder den begränsade staging-miljön.
+            </p>
+          </div>
+        )}
+
         <h1 className="text-3xl font-bold mb-6">
           Välkommen till din dashboard
         </h1>
@@ -162,6 +283,29 @@ export default async function Dashboard() {
           <div className="mt-4">
             <Link href="/login" className="text-blue-600 hover:underline">
               Gå till inloggning
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    // Kontrollera om vi är i staging-miljö
+    const isStaging = process.env.NODE_ENV === 'production' && process.env.DEPLOYMENT_ENV === 'staging';
+    if (isStaging) {
+      return (
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="bg-red-100 p-4 rounded-lg border border-red-300 mb-6">
+            <h2 className="text-lg font-semibold text-red-800">Staging Error</h2>
+            <p className="text-sm text-red-700">
+              Ett fel uppstod i staging-miljön. Detta kan hjälpa med felsökning:
+            </p>
+            <pre className="mt-2 text-xs bg-red-50 p-2 rounded overflow-auto">
+              {String(error)}
+            </pre>
+          </div>
+          <div className="mt-4">
+            <Link href="/login" className="px-4 py-2 bg-blue-600 text-white rounded">
+              Försök logga in igen
             </Link>
           </div>
         </div>

@@ -76,10 +76,17 @@ declare global {
  * @returns En Supabase-klient konfigurerad för server
  */
 export async function createServerClient(cookieStore?: CookieStore | any): Promise<SupabaseClient<Database>> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY;
+  // Hämta miljövariabler - prova både SUPABASE_ och NEXT_PUBLIC_SUPABASE_ prefix för kompatibilitet
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
+    console.error("Supabase miljövariabler saknas:", {
+      urlExists: !!supabaseUrl,
+      keyExists: !!supabaseKey,
+      NODE_ENV: process.env.NODE_ENV,
+      DEPLOYMENT_ENV: process.env.DEPLOYMENT_ENV,
+    });
     throw new Error(
       "Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables"
     );
@@ -156,7 +163,7 @@ export async function createServerClient(cookieStore?: CookieStore | any): Promi
  * Skapa en Supabase-klient med servicerollen
  */
 export async function createServiceRoleClient(): Promise<SupabaseClient<Database>> {
-  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseServiceRole) {
@@ -186,15 +193,48 @@ export async function createClientCookies(): Promise<SupabaseClient<Database>> {
  */
 export async function getServerSideUser(cookieStore: CookieStore | any): Promise<{ id: string; email: string } | null> {
   try {
+    // Logga miljöinformation
+    console.log('Server auth check environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      DEPLOYMENT_ENV: process.env.DEPLOYMENT_ENV || 'not set',
+    });
+
+    // Logga tillgängliga cookies
+    if (typeof cookieStore.getAll === 'function') {
+      const allCookies = cookieStore.getAll();
+      console.log('Available cookies:', allCookies.map((c: any) => c.name));
+    }
+
+    // Utvecklingsmiljö kan använda mock
+    if (isDevelopment()) {
+      console.log('Server auth check: Using development auth');
+      const mockUser = {
+        id: "123456",
+        email: "test@example.com",
+      };
+      return mockUser;
+    }
+
     // Skapa en Supabase-klient för serveranvändning
     const supabase = await createServerClient(cookieStore);
 
     // Supabase v2: använd getUser
     const { data, error } = await supabase.auth.getUser();
 
-    if (error || !data?.user || !data.user.email) {
+    if (error) {
+      console.error('[supabase-server] Auth error:', error.message);
       return null;
     }
+
+    if (!data?.user || !data.user.email) {
+      console.log('[supabase-server] No user data found');
+      return null;
+    }
+
+    console.log('Server auth check success:', {
+      userId: data.user.id.substring(0, 8) + '...',
+      userEmail: data.user.email,
+    });
 
     return {
       id: data.user.id,
@@ -248,8 +288,6 @@ if (isDevelopment()) {
         if (options.cookies) {
           const cookiesImpl = options.cookies;
           cookiesImpl.get = (name: string) => mockCookieStore[name];
-          cookiesImpl.set = (name: string, value: string) => { mockCookieStore[name] = value; };
-          cookiesImpl.remove = (name: string) => { delete mockCookieStore[name]; };
         }
 
         return mockSupabase as unknown as SupabaseClient<Database>;
