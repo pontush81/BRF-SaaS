@@ -186,11 +186,13 @@ POST   /api/join/:token                       - Accept invitation
 ## Implementation Priorities
 
 1. **First Phase (MVP)**:
+
    - Basic handbook structure (sections and pages)
    - Simple content editor
    - Member listing and role management
 
 2. **Second Phase**:
+
    - Enhanced content editor with media support
    - Invitation system
    - Search functionality
@@ -208,4 +210,4 @@ We'll follow these principles during implementation:
 - **Progressive enhancement**: Start with core functionality and enhance incrementally
 - **Tenant isolation**: Ensure proper data isolation between organizations
 - **Test coverage**: Create test cases for all critical functionality
-- **Documentation**: Document all API endpoints and component usage 
+- **Documentation**: Document all API endpoints and component usage

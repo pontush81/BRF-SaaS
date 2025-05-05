@@ -21,7 +21,7 @@ export type UserWithOrg = {
 /**
  * Hämtar inloggad användare från Supabase och databasen.
  * Denna funktion importerar next/headers och kan BARA användas på servern.
- * 
+ *
  * Körs i serverkomponenter eller API-routes.
  */
 export async function getCurrentUserServer() {
@@ -29,50 +29,61 @@ export async function getCurrentUserServer() {
     // Dynamisk import för att undvika att importera next/headers vid byggtid
     const { cookies } = await import('next/headers');
     const cookieStore = cookies();
-    
+
     // Importera getServerSideUser istället för att skapa en egen client
     const { getServerSideUser } = await import('@/supabase-server');
-    
+
     // Använd getServerSideUser direkt med cookieStore
     const user = await getServerSideUser(cookieStore);
-    
-    console.log("Server auth check:", {
+
+    console.log('Server auth check:', {
       userExists: !!user,
       userId: user?.id,
-      userEmail: user?.email
+      userEmail: user?.email,
     });
-    
+
     if (!user || !user.email) {
-      console.log("No authenticated user found");
+      console.log('No authenticated user found');
       return null;
     }
-    
+
     // Hämta användare från databas via repository
-    console.log("Fetching user from database with email:", user.email);
+    console.log('Fetching user from database with email:', user.email);
     try {
       const dbUser = await userRepository.getUserWithOrganizations(user.email);
-      console.log("DB User fetch result:", {
+      console.log('DB User fetch result:', {
         userExists: !!dbUser,
         userId: dbUser?.id,
-        orgCount: dbUser?.organizations?.length || 0
+        orgCount: dbUser?.organizations?.length || 0,
       });
-      
+
       if (!dbUser) {
-        console.log("User not found in database despite valid session");
-        
+        console.log('User not found in database despite valid session');
+
         // Om användaren har en session men saknas i databasen, skapa användaren
-        console.log("Attempting to create missing user in database");
+        console.log('Attempting to create missing user in database');
         try {
+          // Check if user has user_metadata property and extract name safely
+          const userName =
+            user &&
+            typeof user === 'object' &&
+            'user_metadata' in user &&
+            user.user_metadata &&
+            typeof user.user_metadata === 'object' &&
+            'name' in user.user_metadata
+              ? String(user.user_metadata.name)
+              : null;
+
           const newUser = await userRepository.createUserWithOrganization({
             email: user.email,
-            name: user.user_metadata?.name || null
+            name: userName,
           });
-          
-          console.log("Successfully created missing user:", {
+
+          console.log('Successfully created missing user:', {
             userId: newUser.id,
-            email: newUser.email
+            email: newUser.email,
           });
-          
+
           // Returnera nyskapad användare i legacy-format
           return {
             id: newUser.id,
@@ -80,40 +91,42 @@ export async function getCurrentUserServer() {
             name: newUser.name,
             role: UserRole.MEMBER,
             organizationId: null,
-            organization: null
+            organization: null,
           } as UserWithOrg;
         } catch (createError) {
-          console.error("Failed to create missing user:", createError);
+          console.error('Failed to create missing user:', createError);
           return null;
         }
       }
-      
+
       // Konvertera till legacy format för kompabilitet
       const defaultOrg = getDefaultOrganization(dbUser);
-      console.log("Default org:", {
+      console.log('Default org:', {
         exists: !!defaultOrg,
         orgId: defaultOrg?.organizationId,
-        orgName: defaultOrg?.organization?.name
+        orgName: defaultOrg?.organization?.name,
       });
-      
+
       return {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
         role: defaultOrg?.role || UserRole.MEMBER,
         organizationId: defaultOrg?.organizationId || null,
-        organization: defaultOrg?.organization ? {
-          id: defaultOrg.organization.id,
-          name: defaultOrg.organization.name,
-          slug: defaultOrg.organization.slug
-        } : null
+        organization: defaultOrg?.organization
+          ? {
+              id: defaultOrg.organization.id,
+              name: defaultOrg.organization.name,
+              slug: defaultOrg.organization.slug,
+            }
+          : null,
       } as UserWithOrg;
     } catch (error) {
-      console.error("Error fetching user from database:", error);
+      console.error('Error fetching user from database:', error);
       return null;
     }
   } catch (error) {
-    console.error("Error in getCurrentUserServer:", error);
+    console.error('Error in getCurrentUserServer:', error);
     return null;
   }
-} 
+}

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 // PrismaClient är knuten till NodeJS och kan inte användas direkt i browser-miljö
 // https://www.prisma.io/docs/guides/other/troubleshooting-orm/help-articles/nextjs-prisma-client-dev-practices
@@ -9,7 +9,9 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 const isTest = process.env.NODE_ENV === 'test';
 
 // Logga prisma-miljön
-console.log(`Initializing Prisma client for environment: ${process.env.NODE_ENV}`);
+console.log(
+  `Initializing Prisma client for environment: ${process.env.NODE_ENV}`
+);
 
 // Kontrollera om vi har databas-URL
 if (!process.env.DATABASE_URL) {
@@ -21,8 +23,10 @@ if (!process.env.DATABASE_URL) {
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 // Konfigurera Prisma-klienten med rätt options
-const prismaClientOptions = {
-  log: isDevelopment ? ['query', 'error', 'warn'] : ['error'],
+const prismaClientOptions: Prisma.PrismaClientOptions = {
+  log: isDevelopment
+    ? (['query', 'error', 'warn'] as Prisma.LogLevel[])
+    : (['error'] as Prisma.LogLevel[]),
   errorFormat: isDevelopment ? 'pretty' : 'minimal',
 };
 
@@ -39,7 +43,7 @@ if (isDevelopment && !isTest) {
     } catch (error: any) {
       console.error('❌ Error connecting to database:');
       console.error(error);
-      
+
       // Mer specifik felhantering för multi-tenant-fel
       if (error.message && error.message.includes('Tenant or user not found')) {
         console.error(`
@@ -53,8 +57,10 @@ This can be caused by:
 Try temporarily bypassing tenant isolation for development by adding 'schema=public' to your DATABASE_URL.
         `);
       }
-      
-      console.warn('⚠️ Application may not function correctly due to database connection issues');
+
+      console.warn(
+        '⚠️ Application may not function correctly due to database connection issues'
+      );
     }
   })();
 }
@@ -62,4 +68,4 @@ Try temporarily bypassing tenant isolation for development by adding 'schema=pub
 // Endast lägg till i global-objekt i utveckling för att undvika minnesproblem
 if (isDevelopment) globalForPrisma.prisma = prisma;
 
-export default prisma; 
+export default prisma;

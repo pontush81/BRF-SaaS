@@ -1,15 +1,41 @@
-import prisma from '@/lib/prisma'
+import prisma from '@/lib/prisma';
+import { UserRole } from '@prisma/client';
 // Importera bara konstanter från client-filen
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/supabase-client'
-import { UserWithOrganizations, UserOrganizationWithOrg, getDefaultOrganization } from '@/types/prisma'
-import { userRepository } from '@/repositories/userRepository'
-import { organizationRepository } from '@/repositories/organizationRepository'
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/supabase-client';
+import {
+  UserWithOrganizations,
+  UserOrganizationWithOrg,
+  getDefaultOrganization,
+} from '@/types/prisma';
+import { userRepository } from '@/repositories/userRepository';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
-// Definiera UserRole-enum som motsvarar Prisma-schemat
-export enum UserRole {
-  ADMIN = 'ADMIN',
-  EDITOR = 'EDITOR',
-  MEMBER = 'MEMBER'
+// Re-export UserRole för att göra den tillgänglig
+export { UserRole };
+
+// SUPERADMIN constant for backward compatibility
+// This avoids having to update the database schema
+export const SUPERADMIN_ROLE = 'SUPERADMIN';
+
+/**
+ * Checks if a user has SUPERADMIN access
+ * @param userData The user data to check
+ * @returns True if the user has SUPERADMIN access
+ */
+export function hasSuperAdminAccess(userData: { role: any } | null): boolean {
+  if (!userData) return false;
+
+  // Check for string role comparison
+  if (typeof userData.role === 'string') {
+    return userData.role === SUPERADMIN_ROLE;
+  }
+
+  // Try toString() method if available
+  if (userData.role && typeof userData.role.toString === 'function') {
+    return userData.role.toString() === SUPERADMIN_ROLE;
+  }
+
+  return false;
 }
 
 // Definiera kompatibilitet med äldre koddelar (för legacy support)
@@ -20,9 +46,6 @@ export interface User {
   role: UserRole;
   organizationId: string | null;
 }
-
-// Re-export UserRole för bakåtkompatibilitet
-// export { UserRole }; // Borttaget för att undvika dubbel export
 
 export type UserWithOrg = User & {
   organization: {
@@ -35,32 +58,43 @@ export type UserWithOrg = User & {
 /**
  * Kontrollerar om en användare har en specifik roll
  */
-export function hasRole(user: User | UserWithOrg | UserWithOrganizations | null, role: UserRole): boolean {
+export function hasRole(
+  user: User | UserWithOrg | UserWithOrganizations | null,
+  role: UserRole
+): boolean {
   if (!user) return false;
-  
+
   // Om den nya UserWithOrganizations används
   if ('organizations' in user) {
     return user.organizations.some(org => {
       // Adminrättigheter över alla roller
       if (org.role === UserRole.ADMIN) return true;
       // Editorrättigheter över editor och member
-      if (org.role === UserRole.EDITOR && (role === UserRole.EDITOR || role === UserRole.MEMBER)) return true;
+      if (
+        org.role === UserRole.EDITOR &&
+        (role === UserRole.EDITOR || role === UserRole.MEMBER)
+      )
+        return true;
       // Memberrättigheter bara över member
       if (org.role === UserRole.MEMBER && role === UserRole.MEMBER) return true;
       return false;
     });
   }
-  
+
   // Legacy support för gamla User/UserWithOrg
   // Admins har alla rättigheter
   if (user.role === UserRole.ADMIN) return true;
-  
+
   // Editors har editor och member rättigheter
-  if (user.role === UserRole.EDITOR && (role === UserRole.EDITOR || role === UserRole.MEMBER)) return true;
-  
+  if (
+    user.role === UserRole.EDITOR &&
+    (role === UserRole.EDITOR || role === UserRole.MEMBER)
+  )
+    return true;
+
   // Members har bara member rättigheter
   if (user.role === UserRole.MEMBER && role === UserRole.MEMBER) return true;
-  
+
   return false;
 }
 
@@ -172,10 +206,8 @@ export async function connectUserToOrganization(
   };
 }
 
-// === För användning i både Pages Router och App Router ===
-
 /**
- * Wrapper för getCurrentUser som kan användas överallt. 
+ * Wrapper för getCurrentUser som kan användas överallt.
  * Returnerar alltid null i klientmiljö och ger felmeddelande.
  */
 export async function getCurrentUser(): Promise<UserWithOrg | null> {
@@ -183,16 +215,16 @@ export async function getCurrentUser(): Promise<UserWithOrg | null> {
   if (typeof window === 'undefined') {
     console.error(
       'getCurrentUser() anropades på servern. Använd getCurrentUserServer från /auth/server-utils istället. ' +
-      'Detta är helt separerat för att undvika att importera next/headers i klientkomponenter.'
+        'Detta är helt separerat för att undvika att importera next/headers i klientkomponenter.'
     );
     return null;
   }
-  
+
   // Annars är vi i en klientmiljö, så vi returnerar null
   // och användaren får istället använda API-anropet i client components
   console.warn(
     'getCurrentUser() anropades i en klientkomponent. ' +
-    'Använd useAuth() i context istället.'
+      'Använd useAuth() i context istället.'
   );
   return null;
-} 
+}

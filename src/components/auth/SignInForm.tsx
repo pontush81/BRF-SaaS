@@ -26,6 +26,9 @@ export default function SignInForm() {
 
   // Kontrollera efter URL-error parameter
   useEffect(() => {
+    // Säkerhetscheck för testmiljö där searchParams kan vara null
+    if (!searchParams) return;
+
     const error = searchParams.get('error');
     if (error === 'unexpected') {
       console.error('Unexpected error detected in URL parameters');
@@ -68,13 +71,15 @@ export default function SignInForm() {
   }, []);
 
   return (
-    <div className="w-full mt-8">
+    <div className="w-full mt-8" data-testid="sign-in-form">
       <form
         className="space-y-4"
         ref={formRef}
         onSubmit={handleSignIn}
         method="post"
       >
+        <h2 className="text-2xl font-bold mb-6">Sign In</h2>
+
         <NetworkDiagnosticPanel networkStatus={networkStatus} />
 
         <div>
@@ -151,7 +156,11 @@ export default function SignInForm() {
             disabled={isLoading || !networkStatus.directSupabase}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            {isLoading ? 'Loggar in...' : 'Logga in'}
+            {isLoading ? (
+              <span data-testid="loading-spinner">Loggar in...</span>
+            ) : (
+              'Logga in'
+            )}
           </button>
         </div>
 

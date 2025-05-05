@@ -1,6 +1,9 @@
 import { renderHook, act } from '@testing-library/react';
 import { useSignIn } from '../useSignIn';
-import { checkConnectivity, checkSupabaseViaProxy } from '@/utils/network-diagnostics';
+import {
+  checkConnectivity,
+  checkSupabaseViaProxy,
+} from '@/utils/network-diagnostics';
 import { createBrowserClient } from '@/supabase-client';
 
 // Mocka useRouter
@@ -28,8 +31,18 @@ jest.mock('@/contexts/AuthContext', () => ({
 global.fetch = jest.fn().mockImplementation(() =>
   Promise.resolve({
     ok: true,
-    json: () => Promise.resolve({ user: { id: 'test-user' }, session: { access_token: 'token' } }),
-    text: () => Promise.resolve(JSON.stringify({ user: { id: 'test-user' }, session: { access_token: 'token' } })),
+    json: () =>
+      Promise.resolve({
+        user: { id: 'test-user' },
+        session: { access_token: 'token' },
+      }),
+    text: () =>
+      Promise.resolve(
+        JSON.stringify({
+          user: { id: 'test-user' },
+          session: { access_token: 'token' },
+        })
+      ),
   })
 );
 
@@ -81,14 +94,23 @@ const localStorageMock = (() => {
 Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mocka window.location
-delete window.location;
-window.location = { href: '' } as Location;
+const originalLocation = window.location;
+// @ts-ignore - Vi åsidosätter window.location för testning
+window.location = { href: '' };
+
+// Återställ window.location efter testerna
+afterAll(() => {
+  // @ts-ignore - Återställer window.location till sitt ursprungliga värde
+  window.location = originalLocation;
+});
 
 describe('useSignIn Hook', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     document.cookie = '';
     localStorageMock.clear();
+    // @ts-ignore - Återställer href för varje test
+    window.location.href = '';
   });
 
   it('initializes with default values', () => {
@@ -194,7 +216,9 @@ describe('useSignIn Hook', () => {
 
   it('uses redirect path from props', () => {
     const customRedirectPath = '/custom-dashboard';
-    const { result } = renderHook(() => useSignIn({ redirectPath: customRedirectPath }));
+    const { result } = renderHook(() =>
+      useSignIn({ redirectPath: customRedirectPath })
+    );
 
     // Skapa ett mock event
     const mockEvent = {

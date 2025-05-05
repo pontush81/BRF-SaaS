@@ -29,6 +29,7 @@ model Organization {
   units         Unit[]
   documents     Document[]
   issues        Issue[]
+  invitations   Invitation[]
 }
 
 // Relation mellan användare och organisationer
@@ -196,6 +197,7 @@ model Session {
 
 // Enumtyper
 enum UserRole {
+  SUPERADMIN
   ADMIN
   EDITOR
   MEMBER
@@ -234,4 +236,21 @@ enum IssuePriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+// Invitation model for organization invites
+model Invitation {
+  id             String       @id @default(uuid())
+  email          String
+  organizationId String
+  role           UserRole     @default(MEMBER)
+  status         String       @default("pending") // pending, accepted, expired
+  token          String       @unique
+  invitedBy      String
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
 }

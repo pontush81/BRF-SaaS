@@ -1,13 +1,12 @@
 // Läs in .env.test-filen för tester
-require('dotenv').config({ path: '.env.test' });
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.test' });
 
 // Sätter NODE_ENV till test
 process.env.NODE_ENV = 'test';
 
 // Add any global test setup here, such as:
 import '@testing-library/jest-dom';
-import { PrismaClient } from '@prisma/client';
-import { cleanupTestDatabase } from './src/lib/test/testUtils';
 
 // Mock window.matchMedia (krävs för vissa Next.js komponenter)
 Object.defineProperty(window, 'matchMedia', {
@@ -43,9 +42,25 @@ global.IntersectionObserver = class IntersectionObserver {
   }
 };
 
-// Rensa testdatabasen efter alla tester
-afterAll(async () => {
-  const prisma = new PrismaClient();
-  await cleanupTestDatabase(prisma);
-  await prisma.$disconnect();
-}); 
+// Mock för Prisma
+jest.mock('./src/lib/prisma', () => {
+  return {
+    __esModule: true,
+    // Använd dynamisk import för att undvika require
+    get prisma() {
+      return import('./src/lib/test/__mocks__/prisma').then(m => m.default);
+    },
+  };
+});
+
+// Kod som körs före varje test
+beforeEach(() => {
+  // Återställ alla mockar före varje test
+  jest.clearAllMocks();
+});
+
+// Clenar bara upp mocken efter alla tester, ingen riktig databashantering
+afterAll(() => {
+  // Undvik console.log i produktionskod
+  // console.log('Tests completed, cleanup complete');
+});
