@@ -45,77 +45,34 @@ export const checkCookies = (): boolean => {
 
 /**
  * Försöker logga in användaren via Supabase
+ * FÖRENKLAD VERSION: Fokuserar på att antingen använda standard Supabase eller säkerhetskopia via proxy
  */
 export async function signInWithSupabase(
   supabase: SupabaseClient,
   email: string,
   password: string
 ): Promise<AuthResult> {
-  let dnsError = false;
+  const isStaging = process.env.NODE_ENV === 'production' && process.env.DEPLOYMENT_ENV === 'staging';
 
-  // Kontrollera om vi har ett känt DNS-problem
-  if (typeof window !== 'undefined' && window.__hasDnsFailure === true) {
-    console.log('[signInWithSupabase] Using cached DNS failure state - proxy mode active');
-    dnsError = true;
+  // Om vi är i staging, försök med proxy-inloggning direkt
+  if (isStaging) {
+    try {
+      console.log('[signInWithSupabase] Staging environment detected, trying direct proxy login');
+      const proxyResult = await tryProxyLogin(email, password);
+      if (proxyResult.success) {
+        return proxyResult;
+      }
+
+      // Om proxy-inloggning misslyckas, fortsätt med standard Supabase
+      console.log('[signInWithSupabase] Proxy login failed, trying standard Supabase login');
+    } catch (error) {
+      console.error('[signInWithSupabase] Proxy login error:', error);
+      // Fortsätt med standard Supabase om proxy misslyckas
+    }
   }
 
   try {
-    // Check DNS connectivity first if we don't already know we have a problem
-    if (!dnsError && typeof window !== 'undefined') {
-      try {
-        // Simple DNS check
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/healthz`, {
-          method: 'HEAD',
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-      } catch (error) {
-        console.warn('[signInWithSupabase] DNS preflight check failed:', error);
-        dnsError = true;
-
-        // Set global flag for future requests
-        if (typeof window !== 'undefined') {
-          window.__hasDnsFailure = true;
-        }
-      }
-    }
-
-    // Om vi har DNS-problem, använd direkt proxy-API för inloggningen
-    if (dnsError) {
-      console.log('[signInWithSupabase] Using proxy API for login due to DNS issues');
-
-      try {
-        const response = await fetch('/api/proxy/auth/v1/token?grant_type=password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ email, password }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('[signInWithSupabase] Proxy login failed:', errorData);
-          return { success: false, message: errorData.error_description || 'Inloggningen misslyckades' };
-        }
-
-        const session = await response.json();
-        return { success: true, session };
-      } catch (proxyError) {
-        console.error('[signInWithSupabase] Proxy login error:', proxyError);
-        return {
-          success: false,
-          message: 'Kunde inte ansluta till inloggningsservern. Kontrollera din internetanslutning.'
-        };
-      }
-    }
-
-    // Standard Supabase inloggning om ingen DNS-problem upptäckts
+    // Standard Supabase inloggning
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -123,6 +80,13 @@ export async function signInWithSupabase(
 
     if (error) {
       console.error('[signInWithSupabase] Supabase login error:', error);
+
+      // Om vi får ett nätverksfel, försök med proxy som en säkerhetskopia
+      if (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+        console.log('[signInWithSupabase] Network error detected, trying proxy login as fallback');
+        return tryProxyLogin(email, password);
+      }
+
       return {
         success: false,
         message: error.message,
@@ -136,44 +100,14 @@ export async function signInWithSupabase(
   } catch (error) {
     console.error('[signInWithSupabase] Unexpected error:', error);
 
-    // Fånga DNS-relaterade fel
+    // Nätverksfel, försök med proxy
     if (
       error instanceof TypeError &&
       (error.message.includes('Failed to fetch') ||
        error.message.includes('Network request failed'))
     ) {
-      console.warn('[signInWithSupabase] DNS error detected, trying proxy');
-
-      // Sätt global flagga för framtida anrop
-      if (typeof window !== 'undefined') {
-        window.__hasDnsFailure = true;
-      }
-
-      // Försök igen med proxy
-      try {
-        const response = await fetch('/api/proxy/auth/v1/token?grant_type=password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ email, password }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          return { success: false, message: errorData.error_description || 'Inloggningen misslyckades' };
-        }
-
-        const session = await response.json();
-        return { success: true, session };
-      } catch (proxyError) {
-        console.error('[signInWithSupabase] Proxy login attempt failed:', proxyError);
-        return {
-          success: false,
-          message: 'Kunde inte ansluta till inloggningsservern. Kontrollera din internetanslutning.'
-        };
-      }
+      console.log('[signInWithSupabase] Network error, trying proxy login');
+      return tryProxyLogin(email, password);
     }
 
     return {
@@ -182,6 +116,40 @@ export async function signInWithSupabase(
         error instanceof Error
           ? error.message
           : 'Ett oväntat fel inträffade vid inloggningen',
+    };
+  }
+}
+
+/**
+ * Försöker logga in via proxy-API
+ */
+async function tryProxyLogin(email: string, password: string): Promise<AuthResult> {
+  try {
+    const response = await fetch('/api/proxy/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('[tryProxyLogin] Proxy login failed:', errorData);
+      return {
+        success: false,
+        message: errorData.error_description || 'Inloggningen misslyckades'
+      };
+    }
+
+    const session = await response.json();
+    return { success: true, session };
+  } catch (proxyError) {
+    console.error('[tryProxyLogin] Error:', proxyError);
+    return {
+      success: false,
+      message: 'Kunde inte ansluta till inloggningsservern. Kontrollera din internetanslutning.'
     };
   }
 }
@@ -263,11 +231,11 @@ export const signInViaProxy = async (
       };
     }
   } catch (error) {
-    console.error('Error during proxy login:', error);
+    console.error('Error in signInViaProxy:', error);
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'An unexpected error occurred',
+        error instanceof Error ? error.message : 'Unknown error during login',
     };
   }
 };

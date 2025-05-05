@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * En API-endpoint för att synkronisera sessionsdata mellan klienten och servern.
  * Denna funktion tar emot access- och refresh-token från klienten och lagrar dem
  * i cookies som är tillgängliga både på klient- och serversidan.
+ *
+ * FÖRENKLAD VERSION: Applicerar samma logik oavsett miljö för att undvika problem med cookies
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,32 +38,25 @@ export async function POST(request: NextRequest) {
     const isProduction = process.env.NODE_ENV === 'production';
     const isStaging = isProduction && process.env.DEPLOYMENT_ENV === 'staging';
 
-    // Förhindra secure cookies i staging för att underlätta testning
-    // om det explicit anges att det ska vara av
-    const isSecure = isProduction && !process.env.DISABLE_SECURE_COOKIES && !isStaging;
+    // FÖRENKLING: Använd alltid secure=false i staging oavsett andra inställningar
+    // för att eliminera vanliga cookie-problem
+    const isSecure = isProduction && !isStaging;
 
-    // Använd domain baserat på environment
+    // Anpassa domain baserat på environment
     let domain = undefined;
     const hostname = request.headers.get('host') || '';
 
     if (isProduction) {
-      // För staging, använd faktisk host istället för app domain
+      // För staging, använd endast domain om det är nödvändigt
       if (isStaging) {
-        // Extrahera basdomänen från host
-        const hostParts = hostname.split('.');
-        if (hostParts.length >= 2) {
-          // För staging.handbok.org -> använd handbok.org
-          domain = hostParts.slice(hostParts.length - 2).join('.');
-        } else {
-          domain = hostname;
-        }
+        // Logga men låt bli att sätta domain för staging
+        console.log('[API] Staging environment detected, not setting domain');
       } else {
         domain = process.env.NEXT_PUBLIC_APP_DOMAIN || undefined;
       }
-      console.log('[API] Using cookie domain:', domain);
+      console.log('[API] Cookie domain setting:', domain || 'none');
     }
 
-    // Logga request headers för felsökning
     console.log('[API] Request host:', hostname);
 
     const cookieSettings = {
@@ -89,32 +84,8 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 30, // 30 dagar
     });
 
-    // I utvecklingsläge, sätt även en development auth cookie
-    if (process.env.NODE_ENV === 'development') {
-      cookieStore.set('supabase-dev-auth', 'true', {
-        path: '/',
-        maxAge: 60 * 60 * 24, // 1 dag
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-      });
-      console.log('[API] Development auth cookie set');
-    }
-
-    // För staging, sätt en särskild staging-cookie som kan hjälpa vid felsökning
-    if (isStaging) {
-      cookieStore.set('staging-auth', 'true', {
-        path: '/',
-        maxAge: 60 * 60 * 24, // 1 dag
-        httpOnly: false, // Kan läsas av klientskript
-        secure: isSecure,
-        sameSite: 'lax',
-        domain: domain
-      });
-      console.log('[API] Staging auth cookie set');
-    }
-
-    // Sätt även en explicit cookie för diagnostiska ändamål
+    // FÖRENKLING: Använd en gemensam auth-status cookie i alla miljöer
+    // Denna cookie kan användas för att bekräfta autentiseringsstatus på klientsidan
     cookieStore.set('auth-status', 'authenticated', {
       path: '/',
       maxAge: 60 * 60 * 24, // 1 dag
@@ -124,7 +95,19 @@ export async function POST(request: NextRequest) {
       domain: domain
     });
 
-    // Logga för att bekräfta vilka cookies som sattes
+    // I staging-miljö, sätt alltid en staging-cookie för konsekvent beteende
+    if (isStaging) {
+      cookieStore.set('staging-auth', 'true', {
+        path: '/',
+        maxAge: 60 * 60 * 24, // 1 dag
+        httpOnly: false, // Kan läsas av klientskript
+        secure: false, // Aldrig secure i staging
+        sameSite: 'lax',
+        domain: undefined // Ingen domain i staging
+      });
+      console.log('[API] Staging auth cookie set');
+    }
+
     console.log('[API] Session cookies set successfully');
 
     return NextResponse.json({
@@ -156,8 +139,8 @@ export async function GET(request: NextRequest) {
     const cookieStore = cookies();
     const accessToken = cookieStore.get('sb-access-token');
     const refreshToken = cookieStore.get('sb-refresh-token');
-    const devAuth = cookieStore.get('supabase-dev-auth');
     const stagingAuth = cookieStore.get('staging-auth');
+    const authStatus = cookieStore.get('auth-status');
     const host = request.headers.get('host') || '';
 
     // Logga alla tillgängliga cookies för felsökning
@@ -168,19 +151,19 @@ export async function GET(request: NextRequest) {
     const hasTokens = !!accessToken && !!refreshToken;
     const isDev = process.env.NODE_ENV === 'development';
     const isStaging = process.env.NODE_ENV === 'production' && process.env.DEPLOYMENT_ENV === 'staging';
-
-    // I utvecklingsmiljö kan vi också kontrollera dev-auth-cookie
-    const hasDevAuth = isDev && !!devAuth;
     const hasStagingAuth = isStaging && !!stagingAuth;
 
+    // FÖRENKLING: Kontrollera även auth-status-cookie för enklare felsökning
+    const hasAuthStatus = !!authStatus && authStatus.value === 'authenticated';
+
     return NextResponse.json({
-      authenticated: hasTokens || hasDevAuth || hasStagingAuth,
+      authenticated: hasTokens || hasStagingAuth || (isDev && hasAuthStatus),
       environment: process.env.NODE_ENV,
       deploymentEnv: process.env.DEPLOYMENT_ENV || 'not set',
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
-      hasDevAuth: hasDevAuth,
       hasStagingAuth: hasStagingAuth,
+      hasAuthStatus: hasAuthStatus,
       host: host,
       cookies: cookieStore.getAll().map(c => c.name),
     });
