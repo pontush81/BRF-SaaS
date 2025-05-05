@@ -21,7 +21,7 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
-  
+
   // Disable TypeScript type checking during build
   typescript: {
     // !! WARN !!
@@ -30,21 +30,28 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
-  
+
   // Disable eslint during build
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  
+
   // EXTREM FÖRENKLING: ta bort allt utom det nödvändigaste
   // Stäng av alla specialfunktioner som kan orsaka problem
   reactStrictMode: true,
   swcMinify: false,
   poweredByHeader: false,
   compress: true,
-  
+
+  // Configure dynamic routes and static exports
+  experimental: {
+    // This will make the server not pre-render pages with dynamic data
+    // like cookies, headers, etc., which is what we need
+    serverActions: true,
+  },
+
   // Ta bort alla specialfunktioner för rewriting
   // Låt Next.js hantera statiska resurser på sitt standardsätt
   async headers() {
@@ -62,4 +69,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig; 
+module.exports = nextConfig;

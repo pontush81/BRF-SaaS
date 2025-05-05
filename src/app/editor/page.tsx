@@ -5,6 +5,9 @@ import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import Link from 'next/link'
 
+// Mark this route as dynamic to ensure it's not statically rendered
+export const dynamic = 'force-dynamic';
+
 // Definiera typer för section och page för att åtgärda TypeScript-fel
 interface Page {
   id: string;
@@ -26,15 +29,15 @@ export const metadata: Metadata = {
 
 export default async function EditorDashboard() {
   const user = await getCurrentUserServer()
-  
+
   // Säkerhetskontroll (yttre lager, middleware är första försvarslinjen)
   if (!user || (!hasRole(user, UserRole.ADMIN) && !hasRole(user, UserRole.EDITOR))) {
     redirect('/dashboard')
   }
-  
+
   // Hämta relevant data
   const organization = user.organization
-  
+
   if (!organization) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -47,7 +50,7 @@ export default async function EditorDashboard() {
       </div>
     )
   }
-  
+
   // Hämta data
   const handbook = await prisma.handbook.findUnique({
     where: { organizationId: organization.id },
@@ -62,11 +65,11 @@ export default async function EditorDashboard() {
       }
     }
   })
-  
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-4">Redaktör Dashboard</h1>
-      
+
       {/* Handbook Information */}
       <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
         <div className="flex justify-between items-center mb-4">
@@ -76,7 +79,7 @@ export default async function EditorDashboard() {
           </Link>
         </div>
         <p className="text-gray-600 mb-4">{handbook?.description || 'Ingen beskrivning'}</p>
-        
+
         {/* Sektioner och sidor */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
@@ -85,7 +88,7 @@ export default async function EditorDashboard() {
               + Lägg till sektion
             </Link>
           </div>
-          
+
           {handbook?.sections && handbook.sections.length > 0 ? (
             <div className="space-y-4">
               {handbook.sections.map((section: Section) => (
@@ -101,7 +104,7 @@ export default async function EditorDashboard() {
                       </Link>
                     </div>
                   </div>
-                  
+
                   {section.pages && section.pages.length > 0 ? (
                     <ul className="divide-y">
                       {section.pages.map((page: Page) => (
@@ -131,7 +134,7 @@ export default async function EditorDashboard() {
           )}
         </div>
       </div>
-      
+
       {/* Quick Links */}
       <div className="bg-gray-50 p-6 rounded-lg">
         <h2 className="text-lg font-semibold mb-4">Snabblänkar</h2>
@@ -149,4 +152,4 @@ export default async function EditorDashboard() {
       </div>
     </div>
   )
-} 
+}

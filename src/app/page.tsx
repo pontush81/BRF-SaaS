@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { getCurrentUserServer } from '@/lib/auth/server-utils';
 import { redirect } from 'next/navigation';
 
+// Mark this route as dynamic to ensure it's not statically rendered
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'BRF Handbok - Den digitala lösningen för bostadsrättsföreningar',
   description: 'Förenkla hanteringen av din bostadsrättsförening med vår digitala handbok. Samlad information, dokument och kommunikation på ett ställe.',
@@ -35,7 +38,7 @@ export default async function Home() {
             <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8">
               Samla all information på ett ställe. Förenkla styrelsearbetet och förbättra kommunikationen med alla boende.
             </p>
-            
+
             {/* Test links for static files */}
             <div className="mb-8 p-4 bg-gray-100 rounded-lg">
               <p className="text-sm text-gray-700 mb-2">Testlänkar för statiska filer:</p>
@@ -45,7 +48,7 @@ export default async function Home() {
                 <a href="/empty.js" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">JS Test</a>
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link href="/register?type=admin" className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg text-center transition-colors w-full sm:w-auto">
                 Registrera din förening
@@ -62,7 +65,7 @@ export default async function Home() {
       <section className="py-12 md:py-16 bg-white">
         <div className="container mx-auto px-4 md:px-6">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 md:mb-12 text-gray-900">Fördelar för din bostadsrättsförening</h2>
-          
+
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
             <div className="bg-gray-50 p-5 md:p-6 rounded-lg">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
@@ -75,7 +78,7 @@ export default async function Home() {
                 Varje förening får en egen subdomän (dinförening.handbok.org) för enkel åtkomst till innehållet.
               </p>
             </div>
-            
+
             <div className="bg-gray-50 p-5 md:p-6 rounded-lg">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -87,7 +90,7 @@ export default async function Home() {
                 Ladda upp och organisera viktiga dokument som årsredovisningar, stadgar och protokoll.
               </p>
             </div>
-            
+
             <div className="bg-gray-50 p-5 md:p-6 rounded-lg">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -120,7 +123,7 @@ export default async function Home() {
       <section className="py-12 md:py-16 bg-gray-50">
         <div className="container mx-auto px-4 md:px-6">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 md:mb-12 text-gray-900">Vad säger våra kunder</h2>
-          
+
           <div className="grid sm:grid-cols-2 gap-6 md:gap-8">
             <div className="bg-white p-5 md:p-6 rounded-lg shadow-sm">
               <p className="italic text-gray-600 mb-4">
@@ -134,7 +137,7 @@ export default async function Home() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white p-5 md:p-6 rounded-lg shadow-sm">
               <p className="italic text-gray-600 mb-4">
                 "Att ha all dokumentation samlad på ett ställe med sökmöjligheter har sparat oss enormt mycket tid. Styrelsearbetet har blivit mycket effektivare."

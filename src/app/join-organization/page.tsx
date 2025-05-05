@@ -3,6 +3,9 @@ import { getCurrentUserServer } from '@/lib/auth/server-utils'
 import { redirect } from 'next/navigation'
 import JoinOrganizationForm from '@/app/join-organization/JoinOrganizationForm'
 
+// Mark this route as dynamic to ensure it's not statically rendered
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Gå med i en förening | BRF-SaaS',
   description: 'Anslut dig till din bostadsrättsförenings digitala handbok',
@@ -10,17 +13,17 @@ export const metadata: Metadata = {
 
 export default async function JoinOrganizationPage() {
   const user = await getCurrentUserServer()
-  
+
   // Om användaren inte är inloggad, omdirigera till inloggningssidan
   if (!user) {
     redirect('/login?redirect=/join-organization')
   }
-  
+
   // Om användaren redan har en organisation, omdirigera till dashboard
   if (user.organization) {
     redirect('/dashboard')
   }
-  
+
   return (
     <div className="min-h-screen bg-gray-50 pt-12 pb-24 px-4">
       <div className="max-w-lg mx-auto">
@@ -30,11 +33,11 @@ export default async function JoinOrganizationPage() {
             Anslut dig till din bostadsrättsförenings digitala handbok
           </p>
         </div>
-        
+
         <div className="bg-white p-8 rounded-lg shadow">
           <JoinOrganizationForm />
         </div>
-        
+
         <div className="mt-8 text-center text-gray-500 text-sm">
           <p>Behöver du hjälp? Kontakta din förening för mer information.</p>
           <p className="mt-2">
@@ -46,4 +49,4 @@ export default async function JoinOrganizationPage() {
       </div>
     </div>
   )
-} 
+}

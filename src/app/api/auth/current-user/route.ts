@@ -4,6 +4,9 @@ import prisma from '@/lib/prisma';
 import { UserRole } from '@/lib/auth/roleUtils';
 import { createServerClient } from '@/supabase-server';
 
+// Mark this route as dynamic to ensure it's not statically rendered
+export const dynamic = 'force-dynamic';
+
 // Definiera interface för organisation och användarorganisation
 interface Organization {
   id: string;

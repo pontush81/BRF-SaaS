@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
 import { createServerClient } from '@/supabase-server';
 
+// Mark this route as dynamic to ensure it's not statically rendered
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // Hämta email-parametern från URL:en

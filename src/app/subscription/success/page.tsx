@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function SubscriptionSuccessPage() {
+function SubscriptionSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const method = searchParams.get('method');
@@ -22,7 +22,7 @@ export default function SubscriptionSuccessPage() {
     <div className="container mx-auto max-w-3xl py-10 px-6">
       <div className="bg-white p-8 rounded-lg shadow-lg text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-4">Tack för din prenumeration!</h1>
-        
+
         {method === 'invoice' ? (
           <div className="mb-6 text-lg text-gray-700">
             <p>Din faktura kommer att skickas inom 24 timmar.</p>
@@ -34,7 +34,7 @@ export default function SubscriptionSuccessPage() {
             <p className="mt-2">Du kan nu börja använda alla funktioner i BRF-handboken.</p>
           </div>
         )}
-        
+
         <Link href="/dashboard">
           <button className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors">
             Gå till dashboard
@@ -43,4 +43,26 @@ export default function SubscriptionSuccessPage() {
       </div>
     </div>
   );
-} 
+}
+
+// Loading fallback component
+function LoadingSubscription() {
+  return (
+    <div className="container mx-auto max-w-3xl py-10 px-6">
+      <div className="bg-white p-8 rounded-lg shadow-lg text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Laddar prenumerationsinformation...</h1>
+        <div className="mb-6 text-lg text-gray-700">
+          <p>Var god vänta medan vi bekräftar din prenumeration.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function SubscriptionSuccessPage() {
+  return (
+    <Suspense fallback={<LoadingSubscription />}>
+      <SubscriptionSuccessContent />
+    </Suspense>
+  );
+}
