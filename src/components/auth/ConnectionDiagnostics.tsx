@@ -74,7 +74,7 @@ export function ConnectionDiagnostics({
       // Try the Supabase URL directly (will likely fail if DNS issues exist)
       const directSupabase = await checkConnectivity(
         process.env.NEXT_PUBLIC_SUPABASE_URL ||
-          'https://lhoyrmbqcjbvlxshlyqm.supabase.co'
+          'https://lcckqvnwnrgvpnpavhyp.supabase.co'
       );
 
       // Try connecting via our proxy endpoint
