@@ -1,6 +1,8 @@
 import React from 'react';
 import { SignInFormProps } from './SignInFormTypes';
 import { useSignInFormState } from './useSignInFormState';
+import { signInWithSupabase } from './utils/authUtils';
+import { createBrowserClient } from '@/supabase-client';
 
 // Import sub-components
 import {
@@ -51,17 +53,46 @@ export const SignInForm: React.FC<SignInFormProps> = () => {
     setPassword(e.target.value);
   };
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    handleSignInFn(
-      email,
-      password,
-      setIsLoading,
-      setErrorMessage,
-      router,
-      redirectPath,
-      setUser
-    );
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      // Initialize Supabase client
+      const supabase = createBrowserClient();
+
+      // Attempt to sign in
+      const result = await signInWithSupabase(
+        supabase,
+        email,
+        password
+      );
+
+      if (!result.success) {
+        setErrorMessage(result.message || 'Inloggningen misslyckades av okänd anledning');
+        setIsLoading(false);
+        return;
+      }
+
+      // Success! Get session and user info
+      if (!result.session) {
+        setErrorMessage('Sessionen kunde inte skapas');
+        setIsLoading(false);
+        return;
+      }
+
+      // Redirect or handle successful login
+      console.log('Inloggningen lyckades', result);
+
+      // Force a reload to ensure the session is properly established
+      window.location.href = '/';
+
+    } catch (e) {
+      console.error('Oväntat fel vid inloggning:', e);
+      setErrorMessage(e instanceof Error ? e.message : 'Ett oväntat fel inträffade');
+      setIsLoading(false);
+    }
   };
 
   const handleProxyBasedLogin = () => {

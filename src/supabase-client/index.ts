@@ -134,6 +134,12 @@ function createCustomFetch(): typeof fetch {
   // Track DNS failures to automatically switch to proxy mode
   let hasDnsFailure = false;
 
+  // Check for existing DNS failure state
+  if (typeof window !== 'undefined' && window.__hasDnsFailure === true) {
+    hasDnsFailure = true;
+    console.log('[createCustomFetch] Using cached DNS failure state - proxy mode active');
+  }
+
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     // Konvertera URL till string för kontroll
     const urlStr =
@@ -146,16 +152,25 @@ function createCustomFetch(): typeof fetch {
     // Kontrollera om detta är en förfrågan till Supabase
     const isSupabaseRequest = urlStr.includes(SUPABASE_URL);
 
+    // Prioritize proxy for token and auth endpoints regardless of DNS state
+    const isAuthOrTokenRequest =
+      isSupabaseRequest &&
+      (urlStr.includes('/auth/v1/token') ||
+       urlStr.includes('/auth/v1/refresh') ||
+       urlStr.includes('/auth/v1/logout') ||
+       urlStr.includes('/auth/v1/user'));
+
     // Logga anrop för debugging i utvecklingsläge
     if (process.env.NODE_ENV === 'development') {
       console.log(`[createCustomFetch] Request to: ${urlStr}`);
       console.log(
-        `[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}, hasDnsFailure: ${hasDnsFailure}`
+        `[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}, hasDnsFailure: ${hasDnsFailure}, isAuthOrTokenRequest: ${isAuthOrTokenRequest}`
       );
     }
 
-    // If we've previously had DNS failures or we're running on Vercel AND this is a Supabase request, use our proxy
-    if ((hasDnsFailure || isRunningOnVercel) && isSupabaseRequest) {
+    // If we've previously had DNS failures or we're running on Vercel or it's an auth request,
+    // AND this is a Supabase request, use our proxy
+    if ((hasDnsFailure || isRunningOnVercel || isAuthOrTokenRequest) && isSupabaseRequest) {
       // Ersätt Supabase URL med vår proxy
       const originalUrl = urlStr;
       let modifiedUrl: string;
@@ -198,14 +213,16 @@ function createCustomFetch(): typeof fetch {
       // Check if this is a DNS resolution error for Supabase
       if (
         error instanceof TypeError &&
-        (error.message.includes('Failed to fetch') ||
-          error.message.includes('Network request failed')) &&
+        (error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) &&
         isSupabaseRequest
       ) {
-        console.warn(
-          '[createCustomFetch] DNS resolution failed, switching to proxy mode'
-        );
+        console.warn('[createCustomFetch] DNS resolution failed, switching to proxy mode');
         hasDnsFailure = true;
+
+        // Store DNS failure globally to persist across page refreshes
+        if (typeof window !== 'undefined') {
+          window.__hasDnsFailure = true;
+        }
 
         // Try again using the proxy
         if (typeof input === 'string') {
@@ -225,6 +242,74 @@ function createCustomFetch(): typeof fetch {
       throw error;
     }
   };
+}
+
+/**
+ * Kontrollerar DNS-anslutbarhet genom att försöka nå Supabase hälsostatus-endpoint
+ * Denna funktion är asynkron och påverkar inte sidladdningen
+ */
+async function checkDnsConnectivity() {
+  try {
+    // Använd ett timeout för att inte vänta för länge
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`${SUPABASE_URL}/healthz`, {
+      method: 'HEAD',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      console.log('[checkDnsConnectivity] Supabase DNS resolution successful');
+
+      // Clear any previous DNS failure state if we can connect now
+      if (typeof window !== 'undefined' && window.__hasDnsFailure === true) {
+        window.__hasDnsFailure = false;
+        console.log('[checkDnsConnectivity] Cleared previous DNS failure state');
+      }
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.warn('[checkDnsConnectivity] Failed to connect to Supabase:', error);
+
+    // Detect DNS resolution errors
+    if (
+      error instanceof TypeError &&
+      (error.message.includes('Failed to fetch') ||
+       error.message.includes('Network request failed') ||
+       error.message.includes('abort'))
+    ) {
+      console.warn('[checkDnsConnectivity] DNS connectivity issue detected');
+
+      // Set global flag to use proxy for future requests
+      if (typeof window !== 'undefined') {
+        window.__hasDnsFailure = true;
+      }
+
+      return false;
+    }
+
+    return false;
+  }
+}
+
+// Kör DNS-kontroll automatiskt vid uppstart (browser-only)
+if (typeof window !== 'undefined') {
+  // Wait a moment after page load to check connectivity
+  setTimeout(() => {
+    checkDnsConnectivity().then(isConnected => {
+      console.log(`[DNS Check] Initial connectivity check result: ${isConnected ? 'Connected' : 'Failed'}`);
+    });
+  }, 1000);
+
+  // Re-check connectivity periodically (every 30 seconds)
+  setInterval(() => {
+    checkDnsConnectivity();
+  }, 30000);
 }
 
 // Direct implementation to avoid circular imports
@@ -257,6 +342,68 @@ export const createBrowserClient = () => {
       // Server-side - create a minimal client
       console.log('[supabase-client] Creating server-side minimal client');
       return createClient(normalizedUrl, SUPABASE_ANON_KEY);
+    }
+
+    // Check for DNS connectivity issues early - attempt a preflight request to
+    // detect if direct connectivity to Supabase is available
+    const checkDnsConnectivity = async () => {
+      if (window.__hasDnsFailure === true) {
+        // Already detected DNS issues previously
+        return false;
+      }
+
+      try {
+        const controller = new AbortController();
+        const signal = controller.signal;
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        console.log('[supabase-client] Testing direct DNS connectivity to Supabase');
+
+        await fetch(`${normalizedUrl}/auth/v1/health`, {
+          method: 'HEAD',
+          signal,
+          headers: {
+            'apikey': SUPABASE_ANON_KEY
+          }
+        });
+
+        clearTimeout(timeoutId);
+        console.log('[supabase-client] Direct connectivity to Supabase is available');
+        return true;
+      } catch (error) {
+        console.warn('[supabase-client] Direct DNS connection to Supabase failed:', error);
+
+        if (error instanceof TypeError &&
+            (error.message.includes('Failed to fetch') ||
+             error.message.includes('Network request failed') ||
+             error.name === 'AbortError')) {
+          // Store DNS failure state globally to persist across page refreshes
+          window.__hasDnsFailure = true;
+          console.warn('[supabase-client] Setting global DNS failure flag - will use proxy for all requests');
+          return false;
+        }
+
+        // Other types of errors might not be DNS related
+        return true;
+      }
+    };
+
+    // Run connectivity check and store result
+    let hasDnsConnectivity = true;
+    if (typeof window !== 'undefined') {
+      // Check if we already have stored DNS failure state
+      if (window.__hasDnsFailure === true) {
+        console.log('[supabase-client] Using cached DNS failure state - proxy mode active');
+        hasDnsConnectivity = false;
+      } else {
+        // Run test immediately (don't await) but store result when it completes
+        checkDnsConnectivity().then(result => {
+          hasDnsConnectivity = result;
+          if (!result) {
+            console.log('[supabase-client] DNS test completed - switching to proxy mode');
+          }
+        });
+      }
     }
 
     // Reset any existing instance to avoid session errors

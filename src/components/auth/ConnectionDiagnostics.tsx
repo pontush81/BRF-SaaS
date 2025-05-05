@@ -40,6 +40,17 @@ export function ConnectionDiagnostics({
     detailedError: null,
   });
 
+  // Kontrollera om vi redan har en känd DNS-felpåståelse
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.__hasDnsFailure === true) {
+      setDiagnostics(prev => ({
+        ...prev,
+        dnsWorking: false,
+        directConnection: false,
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     if (visible) {
       runDiagnostics();
@@ -75,6 +86,12 @@ export function ConnectionDiagnostics({
       // Determine if DNS is the likely issue
       const isDnsIssue = !directSupabase && proxyResponse.reachable;
 
+      // Uppdatera global DNS-status
+      if (typeof window !== 'undefined') {
+        window.__hasDnsFailure = isDnsIssue;
+        console.log(`[ConnectionDiagnostics] Setting global DNS failure flag to: ${isDnsIssue}`);
+      }
+
       setDiagnostics({
         directConnection: directSupabase,
         proxyConnection: proxyResponse.reachable,
@@ -87,6 +104,7 @@ export function ConnectionDiagnostics({
             proxyResponse,
             serverDiagnostics,
             hasInternet,
+            dnsFailureFlag: typeof window !== 'undefined' ? window.__hasDnsFailure : 'N/A'
           },
           null,
           2
@@ -104,6 +122,20 @@ export function ConnectionDiagnostics({
       });
     } finally {
       setChecking(false);
+    }
+  };
+
+  // Funktion för att försöka logga in via proxy
+  const handleProxyLogin = () => {
+    // Aktivera proxy-läge genom att sätta den globala flaggan
+    if (typeof window !== 'undefined') {
+      window.__hasDnsFailure = true;
+      console.log('[ConnectionDiagnostics] Enabled proxy mode for authentication');
+    }
+
+    // Försök logga in igen om onRetry finns
+    if (onRetry) {
+      onRetry();
     }
   };
 
@@ -141,6 +173,14 @@ export function ConnectionDiagnostics({
                 <p className="mt-2">
                   Använd gärna automatisk proxy för att kringgå problemet.
                 </p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleProxyLogin}
+                  className="mt-2"
+                >
+                  Använd proxy för inloggning
+                </Button>
               </AlertDescription>
             </Alert>
           )}

@@ -368,18 +368,38 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     const headers = new Headers(request.headers);
     headers.set('apikey', SUPABASE_KEY);
     headers.set('X-Client-Info', 'supabase-proxy/' + PROXY_VERSION);
+    headers.set('X-Supabase-Proxy', 'true'); // Markera att detta är en proxy-förfrågan
 
     // Kontrollera om detta är en auth-endpoint och lägg till Authorization header om det behövs
     const isAuthEndpoint = supabasePath.startsWith('/auth/');
+
+    // Speciell hantering för autentisering
     if (isAuthEndpoint) {
       console.log(
         '[Proxy/Forward] Auth endpoint detected, ensuring proper auth headers'
       );
 
-      // Om anroparen redan har inkluderat en Authorization-header, respektera den
-      if (!headers.has('Authorization')) {
-        // Annars använd API-nyckeln
-        headers.set('Authorization', `Bearer ${SUPABASE_KEY}`);
+      // För tokenmatchande slutpunkter, lägg till särskild loggning och felhantering
+      const isTokenEndpoint =
+        supabasePath.includes('/token') ||
+        supabasePath.includes('/refresh') ||
+        supabasePath.includes('/user');
+
+      if (isTokenEndpoint) {
+        console.log('[Proxy/Forward] Token/Session endpoint detected, adding special handling');
+
+        // Om anroparen redan har inkluderat en Authorization-header, respektera den
+        if (!headers.has('Authorization')) {
+          headers.set('Authorization', `Bearer ${SUPABASE_KEY}`);
+        }
+
+        // Sätt speciella headers för session/token-hantering
+        headers.set('X-Token-Handle', 'proxy');
+      } else {
+        // För andra auth-endpoints, bara sätt standardheadern
+        if (!headers.has('Authorization')) {
+          headers.set('Authorization', `Bearer ${SUPABASE_KEY}`);
+        }
       }
     }
 
@@ -401,6 +421,18 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
           '[Proxy/Forward] Request body (first 100 chars):',
           bodyText ? bodyText.substring(0, 100) : '[empty]'
         );
+
+        // För token-relaterade förfrågningar, kontrollera om detta är en inloggning
+        if (supabasePath.includes('/token') && bodyText) {
+          try {
+            const bodyJson = JSON.parse(bodyText);
+            if (bodyJson.email && bodyJson.password) {
+              console.log('[Proxy/Forward] Login attempt detected via proxy');
+            }
+          } catch (e) {
+            // Ignorera fel om vi inte kan parsa JSON
+          }
+        }
       } catch (e) {
         console.error('[Proxy/Forward] Could not log request body:', e);
       }
@@ -421,7 +453,17 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     console.log(
       `[Proxy/Forward] Sending ${request.method} request to Supabase`
     );
-    const supabaseResponse = await fetch(supabaseRequest);
+
+    // Lägg till timeout för att undvika långa väntetider
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 sekunder timeout
+
+    const supabaseResponse = await fetch(supabaseRequest, {
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
     console.log(
       `[Proxy/Forward] Response from Supabase: ${supabaseResponse.status} ${supabaseResponse.statusText}`
     );
@@ -460,6 +502,19 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
             '[Proxy/Forward] Response parsed successfully:',
             Object.keys(responseObj).join(', ')
           );
+
+          // Kontrollera särskilt om detta är en lyckad inloggning eller session-uppdatering
+          if (responseObj.access_token || responseObj.refresh_token) {
+            console.log('[Proxy/Forward] Successfully obtained auth tokens');
+          }
+
+          // Om det finns ett fel, logga det särskilt
+          if (responseObj.error || responseObj.error_description) {
+            console.warn('[Proxy/Forward] Auth error in response:',
+              responseObj.error,
+              responseObj.error_description
+            );
+          }
         } catch (e) {
           console.warn('[Proxy/Forward] Response is not valid JSON:', e);
         }
@@ -474,6 +529,9 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
         Object.entries(corsHeaders).forEach(([key, value]) => {
           responseHeaders.set(key, value);
         });
+
+        // Lägg till proxy-identifieraren i svaret
+        responseHeaders.set('X-Served-By', 'supabase-proxy/' + PROXY_VERSION);
 
         return new NextResponse(responseText, {
           status: supabaseResponse.status,
@@ -499,6 +557,9 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
       responseHeaders.set(key, value);
     });
 
+    // Lägg till proxy-identifieraren i svaret
+    responseHeaders.set('X-Served-By', 'supabase-proxy/' + PROXY_VERSION);
+
     return new NextResponse(responseBody, {
       status: supabaseResponse.status,
       statusText: supabaseResponse.statusText,
@@ -506,6 +567,33 @@ async function forwardToSupabase(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error: any) {
     console.error('[Proxy/Forward] Error:', error);
+
+    // Speciell felhantering för timeout/abort
+    if (error.name === 'AbortError') {
+      return NextResponse.json(
+        {
+          error: 'Timed out connecting to Supabase',
+          code: 'TIMEOUT',
+          details: 'The request to Supabase took too long and was aborted'
+        },
+        { status: 504, headers: corsHeaders }
+      );
+    }
+
+    // För DNS-fel, skapa ett mer specifikt felmeddelande
+    if (error instanceof TypeError &&
+        (error.message.includes('Failed to fetch') ||
+         error.message.includes('Network request failed'))) {
+      return NextResponse.json(
+        {
+          error: 'DNS resolution failed',
+          code: 'DNS_ERROR',
+          message: error.message
+        },
+        { status: 502, headers: corsHeaders }
+      );
+    }
+
     return NextResponse.json(
       { error: `Proxy error: ${error.message}` },
       { status: 500, headers: corsHeaders }

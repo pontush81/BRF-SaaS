@@ -1,3 +1,2 @@
-src/hooks/__tests__/useSignIn.test.tsx(97,8): error TS2790: The operand of a 'delete' operator must be optional.
-src/hooks/__tests__/useSignIn.test.tsx(98,1): error TS2322: Type 'Location' is not assignable to type 'string & Location'.
-  Type 'Location' is not assignable to type 'string'.
+src/components/auth/ConnectionDiagnostics.tsx(106,20): error TS2322: Type '"warning"' is not assignable to type '"default" | "destructive" | null | undefined'.
+src/components/auth/ConnectionDiagnostics.tsx(134,20): error TS2322: Type '"warning"' is not assignable to type '"default" | "destructive" | null | undefined'.
