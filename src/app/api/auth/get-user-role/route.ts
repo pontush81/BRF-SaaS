@@ -8,27 +8,32 @@ export async function GET(request: NextRequest) {
     // Hämta email-parametern från URL:en
     const searchParams = request.nextUrl.searchParams;
     const email = searchParams.get('email');
-    
+
     // Verifiera auktorisering
     const cookieStore = cookies();
-    const supabase = createServerClient(cookieStore);
-    
+    const supabase = await createServerClient(cookieStore);
+
     // Kontrollera att supabase och auth är tillgängliga
     if (!supabase || !supabase.auth) {
-      console.error("[API] Failed to create Supabase client or auth is undefined");
-      return NextResponse.json({ error: 'Authentication error' }, { status: 500 });
+      console.error(
+        '[API] Failed to create Supabase client or auth is undefined'
+      );
+      return NextResponse.json(
+        { error: 'Authentication error' },
+        { status: 500 }
+      );
     }
-    
+
     try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
       if (error || !user) {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        );
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-      
+
       // Validera att förfrågan har korrekt email
       if (!email) {
         return NextResponse.json(
@@ -36,7 +41,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      
+
       // Hämta användaren från databasen
       const dbUser = await prisma.user.findUnique({
         where: { email },
@@ -44,22 +49,24 @@ export async function GET(request: NextRequest) {
           organizations: {
             where: { isDefault: true },
             include: {
-              organization: true
-            }
-          }
-        }
+              organization: true,
+            },
+          },
+        },
       });
-      
+
       if (!dbUser) {
         return NextResponse.json(
           { role: 'GUEST', message: 'User not found' },
           { status: 200 }
         );
       }
-      
+
       // Hämta standardorganisationen och rollen
-      const defaultUserOrg = dbUser.organizations.find((org: any) => org.isDefault);
-      
+      const defaultUserOrg = dbUser.organizations.find(
+        (org: any) => org.isDefault
+      );
+
       // Returnera användarens roll och organisation
       return NextResponse.json({
         role: defaultUserOrg?.role || 'GUEST',
@@ -68,7 +75,10 @@ export async function GET(request: NextRequest) {
       });
     } catch (authError) {
       console.error('[API] Auth error:', authError);
-      return NextResponse.json({ error: 'Authentication error' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Authentication error' },
+        { status: 500 }
+      );
     }
   } catch (error) {
     console.error('Error getting user role:', error);
@@ -77,4 +87,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

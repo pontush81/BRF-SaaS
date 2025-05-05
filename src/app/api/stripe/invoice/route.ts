@@ -6,46 +6,65 @@ import { createInvoiceSubscription } from '@/lib/stripe';
 // Detect environment
 const isDev = process.env.NODE_ENV === 'development';
 const isStaging = process.env.APP_ENV === 'staging';
-const isProd = process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 'staging';
+const isProd =
+  process.env.NODE_ENV === 'production' && process.env.APP_ENV !== 'staging';
 
 export async function POST(request: NextRequest) {
   try {
     // Verify authentication
-    const supabase = createServerClient(cookies());
-    const { data: { user } } = await supabase.auth.getUser();
-    
+    const supabase = await createServerClient(cookies());
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
+
     // Parse request body
-    const { 
-      organizationId, 
-      planType, 
+    const {
+      organizationId,
+      planType,
       billingInterval = 'yearly',
-      organizationInfo
+      organizationInfo,
     } = await request.json();
-    
+
     // Validate required fields
     if (!organizationId || !planType || !organizationInfo) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
     }
-    
+
     // Validate organization info
-    const requiredFields = ['name', 'address', 'postalCode', 'city', 'orgNumber'];
-    const missingFields = requiredFields.filter(field => !organizationInfo[field]);
-    
+    const requiredFields = [
+      'name',
+      'address',
+      'postalCode',
+      'city',
+      'orgNumber',
+    ];
+    const missingFields = requiredFields.filter(
+      field => !organizationInfo[field]
+    );
+
     if (missingFields.length > 0) {
-      return NextResponse.json({ 
-        error: `Missing organization info: ${missingFields.join(', ')}` 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Missing organization info: ${missingFields.join(', ')}`,
+        },
+        { status: 400 }
+      );
     }
-    
+
     // Log in non-production environments
     if (!isProd) {
-      console.log(`[Stripe Invoice] Creating invoice for org ${organizationId}, plan ${planType}`);
+      console.log(
+        `[Stripe Invoice] Creating invoice for org ${organizationId}, plan ${planType}`
+      );
     }
-    
+
     // Create invoice subscription
     const { subscription, invoice } = await createInvoiceSubscription({
       organizationId,
@@ -53,7 +72,7 @@ export async function POST(request: NextRequest) {
       billingInterval,
       organizationInfo,
     });
-    
+
     return NextResponse.json({
       success: true,
       subscriptionId: subscription.id,
@@ -62,9 +81,15 @@ export async function POST(request: NextRequest) {
       invoicePdf: invoice.invoice_pdf,
     });
   } catch (error: any) {
-    console.error('[Stripe Invoice] Error creating invoice subscription:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Failed to create invoice subscription' 
-    }, { status: 500 });
+    console.error(
+      '[Stripe Invoice] Error creating invoice subscription:',
+      error
+    );
+    return NextResponse.json(
+      {
+        error: error.message || 'Failed to create invoice subscription',
+      },
+      { status: 500 }
+    );
   }
-} 
+}
