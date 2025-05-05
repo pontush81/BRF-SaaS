@@ -7,11 +7,14 @@ import {
   NetworkStatusCheck,
   ErrorMessage,
   LoginForm,
-  DebugToggle
+  DebugToggle,
 } from './components';
 
 // Import handlers
-import { handleSignIn as handleSignInFn, handleProxyLogin } from './handlers/signInHandlers';
+import {
+  handleSignIn as handleSignInFn,
+  handleProxyLogin,
+} from './handlers/signInHandlers';
 
 /**
  * SignInForm Component
@@ -36,7 +39,7 @@ export const SignInForm: React.FC<SignInFormProps> = () => {
     setUser,
     router,
     redirectPath,
-    toggleDebugMode
+    toggleDebugMode,
   } = useSignInFormState();
 
   // Event handlers
@@ -87,6 +90,16 @@ export const SignInForm: React.FC<SignInFormProps> = () => {
           networkStatus={networkStatus}
           debugMode={debugMode}
           diagnosticInfo={diagnosticInfo}
+          onRetry={() => {
+            setErrorMessage(null);
+            // Try proxy login by default if we've detected problems
+            // with direct connection but proxy might work
+            if (!networkStatus.directSupabase && networkStatus.proxySupabase) {
+              handleProxyBasedLogin();
+            } else {
+              handleSignIn({ preventDefault: () => {} } as React.FormEvent);
+            }
+          }}
         />
 
         <ErrorMessage message={errorMessage} />
@@ -104,10 +117,7 @@ export const SignInForm: React.FC<SignInFormProps> = () => {
         />
 
         {/* Debug-knapp */}
-        <DebugToggle
-          debugMode={debugMode}
-          onToggle={toggleDebugMode}
-        />
+        <DebugToggle debugMode={debugMode} onToggle={toggleDebugMode} />
       </div>
     </div>
   );

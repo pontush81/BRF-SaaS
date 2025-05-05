@@ -131,6 +131,9 @@ const checkUrlConnection = async (url: string): Promise<boolean> => {
 
 // Skapa en anpassad fetch-funktion som hanterar förfrågningar annorlunda baserat på miljö
 function createCustomFetch(): typeof fetch {
+  // Track DNS failures to automatically switch to proxy mode
+  let hasDnsFailure = false;
+
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     // Konvertera URL till string för kontroll
     const urlStr =
@@ -147,12 +150,12 @@ function createCustomFetch(): typeof fetch {
     if (process.env.NODE_ENV === 'development') {
       console.log(`[createCustomFetch] Request to: ${urlStr}`);
       console.log(
-        `[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}`
+        `[createCustomFetch] isSupabaseRequest: ${isSupabaseRequest}, isRunningOnVercel: ${isRunningOnVercel}, hasDnsFailure: ${hasDnsFailure}`
       );
     }
 
-    // Om vi kör på Vercel OCH det är en Supabase-förfrågan, använd vår proxy
-    if (isRunningOnVercel && isSupabaseRequest) {
+    // If we've previously had DNS failures or we're running on Vercel AND this is a Supabase request, use our proxy
+    if ((hasDnsFailure || isRunningOnVercel) && isSupabaseRequest) {
       // Ersätt Supabase URL med vår proxy
       const originalUrl = urlStr;
       let modifiedUrl: string;
@@ -189,7 +192,38 @@ function createCustomFetch(): typeof fetch {
     }
 
     // För alla andra förfrågningar, använd vanlig fetch
-    return fetch(input, init);
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      // Check if this is a DNS resolution error for Supabase
+      if (
+        error instanceof TypeError &&
+        (error.message.includes('Failed to fetch') ||
+          error.message.includes('Network request failed')) &&
+        isSupabaseRequest
+      ) {
+        console.warn(
+          '[createCustomFetch] DNS resolution failed, switching to proxy mode'
+        );
+        hasDnsFailure = true;
+
+        // Try again using the proxy
+        if (typeof input === 'string') {
+          const modifiedUrl = input.replace(SUPABASE_URL, '/api/proxy');
+          return fetch(modifiedUrl, init);
+        } else if (input instanceof URL) {
+          const modifiedUrl = `/api/proxy${input.pathname}${input.search}`;
+          return fetch(modifiedUrl, init);
+        } else if ('url' in input) {
+          // @ts-ignore - Handle Request objects
+          const modifiedUrl = `/api/proxy${input.pathname}${input.search}`;
+          return fetch(modifiedUrl, init);
+        }
+      }
+
+      // For other types of errors, just throw them
+      throw error;
+    }
   };
 }
 

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
+import { ConnectionDiagnostics } from '@/components/auth/ConnectionDiagnostics';
 
 interface NetworkStatusCheckProps {
   networkStatus: {
@@ -13,6 +14,7 @@ interface NetworkStatusCheckProps {
   };
   debugMode: boolean;
   diagnosticInfo: any;
+  onRetry?: () => void;
 }
 
 /**
@@ -21,12 +23,21 @@ interface NetworkStatusCheckProps {
 export const NetworkStatusCheck: React.FC<NetworkStatusCheckProps> = ({
   networkStatus,
   debugMode,
-  diagnosticInfo
+  diagnosticInfo,
+  onRetry,
 }) => {
+  const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+
   // Visa inget om allt fungerar eller om vi fortfarande kollar
-  if ((networkStatus.proxySupabase && networkStatus.directSupabase) || networkStatus.checking) {
+  if (
+    (networkStatus.proxySupabase && networkStatus.directSupabase) ||
+    networkStatus.checking
+  ) {
     return null;
   }
+
+  const hasConnectionIssue =
+    !networkStatus.proxySupabase && !networkStatus.directSupabase;
 
   return (
     <>
@@ -37,18 +48,31 @@ export const NetworkStatusCheck: React.FC<NetworkStatusCheckProps> = ({
           color="orange"
           className="mb-4"
         >
-          Vi kunde inte ansluta till vår inloggningstjänst. Kontrollera din internetanslutning och försök igen.
-
+          Vi kunde inte ansluta till vår inloggningstjänst. Kontrollera din
+          internetanslutning och försök igen.
+          <button
+            onClick={() => setShowAdvancedDiagnostics(true)}
+            className="text-blue-600 hover:underline text-sm mt-2 block"
+          >
+            Kör diagnostik
+          </button>
           {debugMode && networkStatus.error && (
             <div className="mt-2 text-xs">
               <strong>Felmeddelande:</strong> {networkStatus.error}
               {networkStatus.detailedError && (
-                <div className="mt-1"><strong>Detaljer:</strong> {networkStatus.detailedError}</div>
+                <div className="mt-1">
+                  <strong>Detaljer:</strong> {networkStatus.detailedError}
+                </div>
               )}
             </div>
           )}
         </Alert>
       )}
+
+      <ConnectionDiagnostics
+        visible={showAdvancedDiagnostics}
+        onRetry={onRetry}
+      />
 
       {debugMode && diagnosticInfo && (
         <div className="mb-4 p-3 bg-gray-100 text-xs font-mono rounded overflow-x-auto">
